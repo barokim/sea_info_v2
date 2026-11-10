@@ -112,5 +112,9 @@ def top_bar(user: dict | None, dev: bool = False) -> None:
             if user:
                 if st.button(f"{user['character']} {user['nickname']}", key="tb_me", type="tertiary"):
                     nav.go("mypage")
+                if st.button("로그아웃", key="tb_logout", icon=":material/logout:"):
+                    from services import auth  # 순환 불러오기를 피하려고 여기서 불러와요
+                    auth.logout()
+                    nav.go("home")
             elif st.button("로그인", key="tb_login", icon=":material/login:"):
                 nav.go("login")

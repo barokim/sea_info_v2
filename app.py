@@ -50,6 +50,14 @@ user = auth.current_user()
 st.logo(str(ROOT / "assets" / "logo.svg"), icon_image=str(ROOT / "assets" / "logo_icon.svg"), size="large")
 page = st.navigation(nav.build(user), expanded=True)  # 메뉴를 접지 않고 모두 보여줘요
 
+with st.sidebar:  # 로그인 상태와 관계없이 메뉴 아래에 로그인 / 로그아웃을 보여줘요
+    if user:
+        if st.button("로그아웃", key="sb_logout", icon=":material/logout:", width="stretch"):
+            auth.logout()
+            nav.go("home")
+    elif st.button("로그인", key="sb_login", icon=":material/login:", width="stretch"):
+        nav.go("login")
+
 if dev:  # 시안 확인용 보기 전환 (배포 환경에서는 보이지 않아요)
     with st.sidebar:
         st.divider()

@@ -388,6 +388,40 @@ for col, (game, info) in zip(cols, GAMES.items()):
         else:
             ui.empty_state("🐚", "아직 기록이 없어요. 첫 번째 주인공이 되어 볼까요?")
 
+
+# ---------- 더 해 보기: 점수 없이 즐기는 게임 (이종민 추가) ----------
+# 우리가 만든 게임 HTML은 static/games/ 에 있고, 서버가 /app/static/games/ 로 같이 내보내요 (.streamlit/config.toml 의 enableStaticServing).
+# 점수와 Top 5는 없어요. 누르면 새 창에서 열려요.
+EXTRA_GAMES = [
+    {"title": "집게돌이 갯벌 대결", "emoji": "🦀", "desc": "상대 집게보다 먼저 조개를 주워 바구니에 넣어요. 밀물이 오기 전에 돌아와야 해요.",
+     "chips": ["5판", "컴퓨터와 대결"], "url": "/app/static/games/crab-tide.html"},
+    {"title": "복어 빵빵이 대결", "emoji": "🐡", "desc": "상대보다 먼저 복어를 터뜨려요. 간지럼으로 둘 다 부풀게 할 수도 있어요.",
+     "chips": ["5판", "컴퓨터와 대결"], "url": "/app/static/games/puffer-duel.html"},
+    {"title": "물방울 결투", "emoji": "🫧", "desc": "문어가 물방울을 쏘아 복어를 맞혀요. 큰 물방울은 세지만 느려요.",
+     "chips": ["5판", "컴퓨터와 대결"], "url": "/app/static/games/bubble-duel.html"},
+    {"title": "바닷속 초성 탐험대", "emoji": "🔤", "desc": "초성만 보고 해양생물과 바다 용어를 맞혀요. 목숨 10개로 10단계에 도전해요.",
+     "chips": ["10단계", "목숨 10개"], "url": "/app/static/games/chosung-quiz.html"},
+    {"title": "누구게? 바닷속 확대경", "emoji": "🔍", "desc": "확대된 사진을 보고 어떤 바다 생물인지 맞혀요. 정답 뒤에 바다 상식도 알려 줘요.",
+     "chips": ["퀴즈", "새 창에서 열림"], "url": "/app/static/games/magnifier.html"},
+    {"title": "나의 바다 성향 찾기", "emoji": "🧭", "desc": "여섯 가지 질문으로 나와 어울리는 바다 성향을 알아봐요. 재미로 하는 테스트예요.",
+     "chips": ["테스트", "새 창에서 열림"], "url": "/app/static/games/personality.html"},
+]
+
+st.space("medium")
+ui.section("더 해 보기")
+ui.muted("점수는 남지 않아요. 누르면 새 창에서 열려요.")
+for row in range(0, len(EXTRA_GAMES), 2):
+    cols2 = st.columns(2, gap="large")
+    for col, g in zip(cols2, EXTRA_GAMES[row:row + 2]):
+        with col:
+            with st.container(border=True):
+                st.markdown(f'<h3 class="sia-h2" style="font-size:18px;margin:0 0 .25rem">{g["emoji"]} {g["title"]}</h3>',
+                            unsafe_allow_html=True)
+                st.write(g["desc"])
+                ui.chips(*[ui.chip(c) for c in g["chips"]])
+                st.space("small")
+                st.link_button("열기", g["url"], width="stretch", icon=":material/open_in_new:")
+
 # ---------- 팝업 열기 (한 번에 하나만) ----------
 if S.get("playground_open") == "quiz":
     quiz_dialog()
