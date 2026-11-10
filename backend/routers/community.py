@@ -24,8 +24,8 @@ from backend.core.timefmt import as_kst, now
 from backend.db import get_session, new_id
 from backend.models import AdminLog, Board, Comment, Like, Observation, Post, Report, Species, User
 from backend.routers.core import settings_data
-from backend.schemas.common import BoardOut, CommentOut, OkOut, PostOut
-from backend.schemas.community import (DEFAULT_PERM, DEFAULT_RULES, CommentIn, LikedOut, LikeOut, PhotoOut, PostCreated,
+from backend.schemas.common import BoardOut, OkOut, PostOut
+from backend.schemas.community import (DEFAULT_PERM, DEFAULT_RULES, CommentIn, CommentView, LikedOut, LikeOut, PhotoOut, PostCreated,
                                        PostIn, PostPatch, PostText, PostView, ReportedOut, ReportIn, active,
                                        check_extra, field_detail, ko_errors)
 
@@ -81,6 +81,11 @@ def view(p: Post, session: Session) -> PostView:
     u = session.get(User, p.user_id)
     return PostView(**o, edited=bool((p.extra or {}).get("_edited")), author_role=u.role if u else "user",
                     author_grade=u.grade if u else "")
+
+
+def comment_view(c: Comment, session: Session) -> CommentView:
+    return CommentView(**comment_out(c, session).model_dump(),
+                       created_at=as_kst(c.created_at).isoformat(timespec="minutes"))
 
 
 def banned_in(session: Session, text: str) -> str | None:
@@ -226,10 +231,10 @@ def post_one(post_id: str, viewer: User | None = Depends(optional_user), session
     return view(p, session)
 
 
-@router.get("/posts/{post_id}/comments", response_model=list[CommentOut], summary="댓글 목록")
+@router.get("/posts/{post_id}/comments", response_model=list[CommentView], summary="댓글 목록")
 def comments(post_id: str, session: Session = Depends(get_session)):
     rows = session.exec(select(Comment).where(Comment.post_id == post_id, Comment.deleted == False)).all()  # noqa: E712
-    return [comment_out(c, session) for c in sorted(rows, key=lambda c: as_kst(c.created_at))]
+    return [comment_view(c, session) for c in sorted(rows, key=lambda c: as_kst(c.created_at))]
 
 
 # ---------- 사진 ----------
@@ -387,7 +392,7 @@ def post_delete(post_id: str, user: User = Depends(require_user), session: Sessi
 
 
 # ---------- 댓글 ----------
-@router.post("/posts/{post_id}/comments", response_model=CommentOut, summary="댓글 달기")
+@router.post("/posts/{post_id}/comments", response_model=CommentView, summary="댓글 달기")
 def comment_add(post_id: str, body: CommentIn, user: User = Depends(require_user), session: Session = Depends(get_session)):
     p, b = visible_post(post_id, user, session)
     if not rules_of(b)["comments"]:
@@ -407,7 +412,7 @@ def comment_add(post_id: str, body: CommentIn, user: User = Depends(require_user
         print(f"[댓글 오류] {e}", flush=True)
         raise HTTPException(500, "댓글을 달지 못했어요. 잠시 뒤 다시 시도해 주세요.")
     session.refresh(c)
-    return comment_out(c, session)
+    return comment_view(c, session)
 
 
 @router.delete("/comments/{comment_id}", response_model=OkOut, summary="댓글 지우기 (쓴 사람 · 관리자)")

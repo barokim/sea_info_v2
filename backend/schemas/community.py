@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, create_model, field_validator, model_validator
 
-from backend.schemas.common import BoardOut, PostOut
+from backend.schemas.common import BoardOut, CommentOut, PostOut
 
 # ---------- 고를 수 있는 값 ----------
 PERM_LEVELS = ("모두", "회원", "관리자")
@@ -435,6 +435,10 @@ class PostCreated(BaseModel):
 
 class PhotoOut(BaseModel):
     id: str
+
+
+class CommentView(CommentOut):
+    created_at: str
 
 
 class CommentIn(BaseModel):
