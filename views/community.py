@@ -1,6 +1,7 @@
 """U-08 커뮤니티 · U-09 게시글 상세 (차유진 담당).
 
-주소에 ?post=<글 번호> 가 있으면 상세, 없으면 목록이에요. ?board=<게시판> 으로 탭을 고를 수 있어요.
+목록은 /community, 상세는 /community-post?post=<글 번호> 예요.
+예전 /community?post=<글 번호> 주소도 상세로 연결해요. ?board=<게시판> 으로 탭을 고를 수 있어요.
 게시판 탭 · 목록 형태 · 권한 · 운영 규칙은 모두 A-02 게시판 관리 설정을 그대로 따라요.
 
 데이터는 FastAPI 서버에 있어요 (services/community_data.py). 공감 · 댓글 · 신고 · 지우기 검사는 서버가 해요.
@@ -8,6 +9,7 @@
 시안 캡처용: ?shot=report (p1 신고 팝업, ?post= 로 다른 글 지정 가능) | empty (검색 결과 없음)
 """
 import html
+from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 
@@ -21,6 +23,7 @@ user = auth.current_user()
 uid = user["id"] if user else None
 admin = cd.is_admin(user)
 CARD_W = 166  # 폰에서 두 장, PC에서 네 장
+CONTROL_COLUMNS = [3, 1.3]  # 게시판 탭과 검색창의 너비를 맞춰요
 REASON_HELP = {
     "스팸": "광고나 같은 글을 계속 올려요",
     "욕설": "욕이나 남을 깎아내리는 말이 있어요",
@@ -63,9 +66,26 @@ def photo_src(p: dict) -> str:
     return api.file_url(p.get("photo_url") or "")
 
 
+def post_created(p: dict, with_time: bool = False) -> str:
+    """API의 실제 작성 시각을 한국 시간 기준 날짜 또는 날짜·시간으로 표시해요."""
+    try:
+        created = datetime.fromisoformat(p.get("created_at") or "")
+    except (TypeError, ValueError):
+        return "날짜 정보 없음"
+    kst = timezone(timedelta(hours=9))
+    created = created.replace(tzinfo=kst) if created.tzinfo is None else created.astimezone(kst)
+    return created.strftime("%Y.%m.%d %H:%M" if with_time else "%Y.%m.%d")
+
+
 def open_post(p: dict, board_id: str) -> None:
     nav.remember_here("community", board=board_id)
     nav.go("community", post=p["id"])
+
+
+def post_click_target(p: dict, board_id: str) -> None:
+    """투명한 버튼을 게시글 영역 전체에 겹쳐 클릭과 키보드 이동을 지원해요."""
+    if st.button(f"{p['title']} 상세 보기", key=f"community_open_{p['id']}", width="stretch"):
+        open_post(p, board_id)
 
 
 def counts(p: dict, b: dict) -> str:
@@ -94,11 +114,14 @@ def write_button(b: dict) -> None:
 
 
 def card_grid(rows: list[dict], b: dict) -> None:
+    if b["id"] == "obs":
+        observation_grid(rows, b)
+        return
     with st.container(horizontal=True, gap="small"):
         for p in rows:
             sp = db.species(p.get("species") or "")
             u = author_of(p)
-            with st.container(border=True, width=CARD_W, gap="small"):
+            with st.container(border=True, width=CARD_W, gap="small", key=f"community_post_{p['id']}"):
                 if photo_src(p):
                     st.image(photo_src(p), width="stretch")
                 else:
@@ -106,16 +129,74 @@ def card_grid(rows: list[dict], b: dict) -> None:
                 if sp:
                     ui.chips(ui.chip(sp["name"], "sea"))
                 st.markdown(f"<b>{esc(p['title'])}</b>", unsafe_allow_html=True)
-                st.caption(f"{u['character']} {u['nickname']}  \n{p['created']} &nbsp; {counts(p, b)}")
-                if st.button("보기", key=f"community_open_{p['id']}", width="stretch"):
-                    open_post(p, b["id"])
+                st.caption(f"{u['character']} {u['nickname']}  \n{post_created(p)} &nbsp; {counts(p, b)}")
+                post_click_target(p, b["id"])
+
+
+def observation_grid(rows: list[dict], b: dict) -> None:
+    """관찰 이야기는 3열로 배치하고 사진과 글 영역의 높이를 맞춰요."""
+    st.html("""
+        <style>
+        .observation-card-body {
+            display: grid;
+            grid-template-rows: 200px 32px 56px 48px;
+            gap: 12px;
+            min-width: 0;
+        }
+        .observation-card-photo {
+            width: 100%; height: 200px; overflow: hidden; border-radius: 14px;
+        }
+        .observation-card-photo img {
+            display: block; width: 100%; height: 100%; object-fit: cover;
+        }
+        .observation-card-badge { overflow: hidden; }
+        .observation-card-title {
+            margin: 0; font-size: 18px; line-height: 28px; font-weight: 700;
+            display: -webkit-box; -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+        }
+        .observation-card-meta { color: #4A6274; font-size: 14px; line-height: 24px; }
+        .observation-card-meta > div {
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        </style>
+    """)
+    for start in range(0, len(rows), 3):
+        columns = st.columns(3, gap="small")
+        for column, p in zip(columns, rows[start:start + 3]):
+            sp = db.species(p.get("species") or "")
+            u = author_of(p)
+            src = photo_src(p)
+            photo = (f'<img src="{html.escape(src, quote=True)}" alt="게시글 사진">' if src
+                     else ui.photo_html(sp["emoji"] if sp else "🐚",
+                                        tone=sp["tone"] if sp else "aqua", height=200))
+            badge = ui.chip(sp["name"], "sea") if sp else ""
+            rules = cd.opt(b, "rules")
+            meta = [post_created(p)]
+            if rules["like"]:
+                meta.append(f"♡ {int(p.get('likes') or 0)}")
+            if rules["comment"]:
+                meta.append(f"댓글 {int(p.get('comments') or 0)}")
+            with column:
+                with st.container(border=True, gap="small", key=f"community_post_{p['id']}"):
+                    st.html(
+                        '<div class="observation-card-body">'
+                        f'<div class="observation-card-photo">{photo}</div>'
+                        f'<div class="observation-card-badge">{badge}</div>'
+                        f'<p class="observation-card-title" title="{html.escape(p["title"], quote=True)}">'
+                        f'{html.escape(p["title"])}</p>'
+                        '<div class="observation-card-meta">'
+                        f'<div>{html.escape(u["character"])} {html.escape(u["nickname"])}</div>'
+                        f'<div>{" · ".join(meta)}</div></div></div>'
+                    )
+                    post_click_target(p, b["id"])
 
 
 def list_rows(rows: list[dict], b: dict) -> None:
     for p in rows:
         u = author_of(p)
         sp = db.species(p.get("species") or "")
-        with st.container(border=True):
+        with st.container(border=True, key=f"community_post_{p['id']}"):
             with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center",
                               gap="small"):
                 with st.container(gap="small"):
@@ -136,13 +217,39 @@ def list_rows(rows: list[dict], b: dict) -> None:
                     if tags:
                         ui.chips(*tags)
                     st.markdown(f"<b style='font-size:17px'>{esc(p['title'])}</b>", unsafe_allow_html=True)
-                    st.caption(f"{u['character']} {u['nickname']} · {p['created']} &nbsp; {counts(p, b)}")
-                if st.button("보기", key=f"community_open_{p['id']}", icon=":material/chevron_right:",
-                             icon_position="right"):
-                    open_post(p, b["id"])
+                    st.caption(f"{u['character']} {u['nickname']} · {post_created(p)} &nbsp; {counts(p, b)}")
+            post_click_target(p, b["id"])
 
 
 def show_list() -> None:
+    st.html("""
+        <style>
+        [class*="st-key-community_post_"] {
+            position: relative;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        [class*="st-key-community_post_"]:hover {
+            border-color: #0B7285;
+            box-shadow: 0 2px 10px rgba(11, 114, 133, .12);
+        }
+        [class*="st-key-community_post_"] [class*="st-key-community_open_"] {
+            position: absolute; inset: 0; z-index: 1;
+            width: 100%; height: 100%; margin: 0;
+        }
+        [class*="st-key-community_open_"] [data-testid="stButton"] {
+            width: 100%; height: 100%;
+        }
+        [class*="st-key-community_open_"] button {
+            width: 100%; height: 100%; padding: 0;
+            background: transparent !important; border: 0 !important;
+            border-radius: 14px; cursor: pointer;
+        }
+        [class*="st-key-community_open_"] button p { opacity: 0; }
+        [class*="st-key-community_open_"] button:focus-visible {
+            outline: 3px solid #0B7285; outline-offset: -3px;
+        }
+        </style>
+    """)
     boards = cd.visible_boards(user)
     ids = [b["id"] for b in boards]
     notice = None
@@ -164,8 +271,22 @@ def show_list() -> None:
     cur = cur if cur in ids else ids[0]
     if S.get("community_tab") not in ids:
         S["community_tab"] = cur
-    picked = st.segmented_control("게시판", ids, format_func=lambda i: db.board(i)["name"], key="community_tab",
-                                  required=True, wrap=True, label_visibility="collapsed")
+    st.html("""
+        <style>
+        .st-key-community_board_tabs button {
+            flex: 1 1 0;
+            min-height: 48px;
+        }
+        .st-key-community_board_tabs button p { font-size: 16px; }
+        </style>
+    """)
+    tab_column, _ = st.columns(CONTROL_COLUMNS, vertical_alignment="center")
+    with tab_column:
+        with st.container(key="community_board_tabs"):
+            picked = st.segmented_control(
+                "게시판", ids, format_func=lambda i: db.board(i)["name"], key="community_tab",
+                required=True, wrap=True, label_visibility="collapsed", width="stretch",
+            )
     bid = picked or cur
     S["community_board"] = bid
     if st.query_params.get("board") != bid:
@@ -178,7 +299,7 @@ def show_list() -> None:
         write_button(b)
 
     where = " · ".join(cd.opt(b, "search") or ["제목"])
-    c1, c2 = st.columns([3, 1.3], vertical_alignment="center")
+    c1, c2 = st.columns(CONTROL_COLUMNS, vertical_alignment="center")
     with c1:
         q = st.text_input("검색", key="community_q", placeholder=f"{where}(으)로 찾아요",
                           icon=":material/search:", label_visibility="collapsed")
@@ -289,19 +410,26 @@ def del_comment(cid: str) -> None:
 def show_comments(p: dict, b: dict) -> None:
     pid = p["id"]
     cm = cd.comments_for(p)
-    ui.section(f"댓글 {len(cm)}")
+    st.html('<div id="community-comments" style="scroll-margin-top:80px"></div>')
     if not cm:
         ui.muted("아직 댓글이 없어요. 첫 댓글을 남겨 볼까요?")
     for c in cm:
         cu = c.get("author") or db.user(c["user"])
-        with st.container(border=True, gap="small"):
-            with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
-                st.markdown(f"**{cu['character']} {esc(cu['nickname'])}** · "
-                            f"<span style='opacity:.75'>{esc(c['created'])}</span>", unsafe_allow_html=True)
+        with st.container(gap="small"):
+            content, actions = st.columns([10, 1], gap="small", vertical_alignment="top")
+            with content:
+                st.html(
+                    '<div style="padding:6px 0 10px;border-bottom:1px solid #E3ECEF;'
+                    'font-size:15px;line-height:1.5;overflow-wrap:anywhere">'
+                    f'<strong>{html.escape(cu["nickname"])}</strong>'
+                    f'<div style="margin:4px 0">{esc(c["body"])}</div>'
+                    '<div style="font-size:13px;color:#6B8291">'
+                    f'{post_created(c, with_time=True)}</div></div>'
+                )
+            with actions:
                 if uid and (c["user"] == uid or admin):
                     st.button("지우기", type="tertiary", icon=":material/delete:", key=f"community_cdel_{c['id']}",
                               on_click=del_comment, args=(c["id"],))
-            st.markdown(esc(c["body"]), unsafe_allow_html=True)
 
     level = b["perm"]["comment"]
     if cd.can(user, level):
@@ -326,9 +454,8 @@ def show_comments(p: dict, b: dict) -> None:
         ui.muted(f"{b['name']}에는 운영자만 댓글을 달 수 있어요.")
 
 
-def side_panel(p: dict, b: dict) -> None:
+def side_panel(p: dict) -> None:
     sp = db.species(p.get("species") or "")
-    author = author_of(p)
     if sp:
         with st.container(border=True):
             st.markdown("**이 생물은요**")
@@ -337,20 +464,6 @@ def side_panel(p: dict, b: dict) -> None:
             st.caption(f"{sp['safety']['reason']} · 안전 정보는 참고용이에요.")
             st.markdown(f"**재미있는 사실** · {esc(sp['info']['fun_fact'])}", unsafe_allow_html=True)
             nav.link("identify", "나도 생물 알아보기", icon=":material/photo_camera:")
-    with st.container(border=True):
-        st.markdown("**글쓴이**")
-        sub = author.get("grade") or ("수족관을 공개했어요" if author.get("aquarium_public") else "")
-        ui.item_row(author["character"], author["nickname"], sub, tone="aqua", size=48)
-        if author["id"] == uid:
-            nav.link("aquarium", "내 수족관 보기", icon=":material/water:")
-        elif author.get("role") != "admin":
-            nav.link("user_aquarium", "수족관 구경하기", icon=":material/water:", u=author["id"])
-    others = [x for x in cd.list_posts(b) if x["id"] != p["id"]][:4]
-    if others:
-        st.markdown(f"**{b['name']}의 다른 글**")
-        for x in others:
-            if st.button(x["title"], type="tertiary", key=f"community_other_{x['id']}"):
-                open_post(x, b["id"])
 
 
 def show_detail(pid: str) -> None:
@@ -412,12 +525,15 @@ def show_detail(pid: str) -> None:
             st.markdown(f"**{author['character']} {esc(author['nickname'])}**", unsafe_allow_html=True)
         else:
             nav.link("user_aquarium", f"{author['character']} {author['nickname']}", u=author["id"])
-        meta = p["created"]
+        meta = post_created(p, with_time=True)
         if p.get("place_level") == "region" and p.get("place"):
             meta += f" · :material/location_on: {p['place']}"
         st.caption(meta)
 
-    main, side = st.columns([3, 2], gap="large")
+    if sp:
+        main, side = st.columns([3, 2], gap="large")
+    else:
+        main, side = st.container(), None
     with main:
         if photo_src(p):
             st.image(photo_src(p), width="stretch")
@@ -427,36 +543,57 @@ def show_detail(pid: str) -> None:
                     unsafe_allow_html=True)
         fields.show(b.get("fields"), p.get("extra"))
 
-        with st.container(horizontal=True, gap="small", vertical_alignment="center"):
-            if rules["like"]:
-                liked = bool(uid and cd.is_liked(pid))
-                if st.button(f"공감 {p.get('likes', 0)}", icon=":material/favorite:", key="community_like",
-                             type="primary" if liked else "secondary") \
-                        and auth_gate.login_required("공감할 수 있어요", here="community", post=pid):
-                    try:
-                        S["community_toast"] = "공감했어요" if cd.toggle_like(pid)["liked"] else "공감을 취소했어요"
-                    except ApiError as e:
-                        S["community_toast"] = e.message
-                    st.rerun()
-            if mine or admin:
-                if st.button("고치기", icon=":material/edit:", key="community_edit"):
-                    nav.go("write", edit=pid)
-                if st.button("지우기", icon=":material/delete:", key="community_delete"):
-                    delete_dialog(p)
-            if rules["report"] and not mine:
-                done = bool(uid and cd.reported(pid))
-                if st.button("신고했어요" if done else "신고", icon=":material/flag:", type="tertiary",
-                             disabled=done, key="community_report") \
-                        and auth_gate.login_required("이 글을 신고할 수 있어요", here="community", post=pid):
-                    S["community_report_open"] = pid
+        st.space(32)
+        with st.container(horizontal=True, horizontal_alignment="distribute", gap="small",
+                          vertical_alignment="center"):
+            with st.container(horizontal=True, width="content", gap="small", vertical_alignment="center"):
+                if rules["like"]:
+                    liked = bool(uid and cd.is_liked(pid))
+                    if st.button(f"공감 {p.get('likes', 0)}", icon=":material/favorite:", key="community_like",
+                                 type="primary" if liked else "tertiary") \
+                            and auth_gate.login_required("공감할 수 있어요", here="community", post=pid):
+                        try:
+                            S["community_toast"] = "공감했어요" if cd.toggle_like(pid)["liked"] else "공감을 취소했어요"
+                        except ApiError as e:
+                            S["community_toast"] = e.message
+                        st.rerun()
+                if rules["comment"]:
+                    st.html(
+                        '<style>.community-comment-link {'
+                        'display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 8px;'
+                        'color:#12344D;text-decoration:none !important;border-radius:8px;font-size:16px;}'
+                        '.community-comment-link:hover {background:#EAF6F7;color:#0B7285;}'
+                        '.community-comment-link:focus-visible {outline:2px solid #0B7285;}'
+                        '</style>'
+                        '<a class="community-comment-link" href="#community-comments" target="_self">'
+                        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                        'stroke-width="1.7" aria-hidden="true">'
+                        '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5a9.5 9.5 0 0 1 19 0Z"/>'
+                        '</svg>'
+                        f'댓글 <strong>{int(p.get("comments") or 0)}</strong></a>',
+                        width="content",
+                    )
+            with st.container(horizontal=True, width="content", gap="small", vertical_alignment="center"):
+                if mine or admin:
+                    if st.button("고치기", icon=":material/edit:", key="community_edit", type="tertiary"):
+                        nav.go("write", edit=pid)
+                    if st.button("지우기", icon=":material/delete:", key="community_delete", type="tertiary"):
+                        delete_dialog(p)
+                if rules["report"] and not mine:
+                    done = bool(uid and cd.reported(pid))
+                    if st.button("신고했어요" if done else "신고", icon=":material/flag:", type="tertiary",
+                                 disabled=done, key="community_report") \
+                            and auth_gate.login_required("이 글을 신고할 수 있어요", here="community", post=pid):
+                        S["community_report_open"] = pid
 
         st.space("small")
         if rules["comment"]:
             show_comments(p, b)
         else:
             ui.muted("이 게시판은 댓글을 받지 않아요.")
-    with side:
-        side_panel(p, b)
+    if side is not None:
+        with side:
+            side_panel(p)
 
     if S.get("community_report_open") == pid:
         report_dialog(pid)
@@ -464,6 +601,10 @@ def show_detail(pid: str) -> None:
 
 # ---------- 화면 그리기 ----------
 if post_id:
+    if not globals().get("_COMMUNITY_DETAIL", False):
+        nav.go("community_detail", **dict(st.query_params))
     show_detail(post_id)
 else:
+    if globals().get("_COMMUNITY_DETAIL", False):
+        nav.go("community")
     show_list()

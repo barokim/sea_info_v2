@@ -17,6 +17,7 @@ CUSTOMER = {
     "identify": ("views/identify.py", "생물 알아보기", ":material/photo_camera:", "identify", True),
     "aquarium": ("views/aquarium.py", "나의 수족관", ":material/water:", "aquarium", True),
     "community": ("views/community.py", "커뮤니티", ":material/forum:", "community", True),
+    "community_detail": ("views/community_detail.py", "게시글 상세", ":material/article:", "community-post", False),
     "playground": ("views/playground.py", "바다 놀이터", ":material/sports_esports:", "playground", True),
     "news": ("views/news.py", "바다 소식", ":material/newspaper:", "news", True),
     "write": ("views/write.py", "글쓰기", ":material/edit:", "write", False),
@@ -66,11 +67,14 @@ def path(key: str) -> str:
 
 def go(key: str, **params) -> None:
     """다른 화면으로 이동. params는 주소 뒤 ?key=value 로 붙어요."""
+    if key == "community" and params.get("post"):
+        key = "community_detail"
     st.switch_page(path(key), query_params=params or None)
 
 
 def link(key: str, label: str | None = None, icon: str | None = None, **params) -> None:
-    st.page_link(path(key), label=label or ALL[key][1], icon=icon, query_params=params or None)
+    target = "community_detail" if key == "community" and params.get("post") else key
+    st.page_link(path(target), label=label or ALL[key][1], icon=icon, query_params=params or None)
 
 
 def remember_here(key: str, **params) -> None:
