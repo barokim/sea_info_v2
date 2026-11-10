@@ -1,0 +1,175 @@
+[
+  {
+    "id": "sp_hermit",
+    "name": "소라게",
+    "emoji": "🦀",
+    "tone": "sand",
+    "confidence": "high",
+    "safety": {
+      "level": "caution",
+      "reason": "집게에 물릴 수 있어요"
+    },
+    "protected": false,
+    "summary": "빈 고둥 껍데기를 집으로 삼아 사는 게예요.",
+    "info": {
+      "habitat": "바위 해변과 갯벌의 얕은 물웅덩이",
+      "food": "해조류, 작은 생물의 사체 등 가리지 않고 먹어요",
+      "fun_fact": "몸이 자라면 더 큰 껍데기로 이사해요"
+    },
+    "candidates": [
+      "집게(다른 종류)",
+      "게(새끼)"
+    ]
+  },
+  {
+    "id": "sp_star",
+    "name": "별불가사리",
+    "emoji": "⭐",
+    "tone": "coral",
+    "confidence": "high",
+    "safety": {
+      "level": "safe",
+      "reason": "위험하지 않아요. 살살 보고 제자리에 놓아 주세요"
+    },
+    "protected": false,
+    "summary": "짧은 팔 다섯 개가 별 모양으로 붙은 불가사리예요.",
+    "info": {
+      "habitat": "바위 해변, 얕은 바다 바닥",
+      "food": "조개 같은 작은 생물",
+      "fun_fact": "팔이 떨어져도 다시 자라요"
+    },
+    "candidates": [
+      "아무르불가사리",
+      "거미불가사리"
+    ]
+  },
+  {
+    "id": "sp_moon",
+    "name": "보름달물해파리",
+    "emoji": "🪼",
+    "tone": "aqua",
+    "confidence": "medium",
+    "safety": {
+      "level": "caution",
+      "reason": "쏘일 수 있어요. 손으로 만지지 마세요"
+    },
+    "protected": false,
+    "summary": "투명한 몸에 네 잎 클로버 같은 무늬가 있는 해파리예요.",
+    "info": {
+      "habitat": "연안의 잔잔한 바다",
+      "food": "아주 작은 플랑크톤",
+      "fun_fact": "몸의 95% 이상이 물이에요"
+    },
+    "candidates": [
+      "유령해파리",
+      "노무라입깃해파리"
+    ]
+  },
+  {
+    "id": "sp_seahare",
+    "name": "군소",
+    "emoji": "🐌",
+    "tone": "violet",
+    "confidence": "high",
+    "safety": {
+      "level": "safe",
+      "reason": "위험하지 않아요. 놀라면 보라색 물을 뿜어요"
+    },
+    "protected": false,
+    "summary": "껍데기가 없는 커다란 바다 달팽이 무리예요.",
+    "info": {
+      "habitat": "해조류가 많은 바위 해변",
+      "food": "해조류",
+      "fun_fact": "적을 만나면 보라색 물을 뿜어 몸을 숨겨요"
+    },
+    "candidates": [
+      "갯민숭달팽이"
+    ]
+  },
+  {
+    "id": "sp_urchin",
+    "name": "보라성게",
+    "emoji": "🦔",
+    "tone": "violet",
+    "confidence": "high",
+    "safety": {
+      "level": "caution",
+      "reason": "가시에 찔릴 수 있어요"
+    },
+    "protected": false,
+    "summary": "온몸이 뾰족한 가시로 덮인 성게예요.",
+    "info": {
+      "habitat": "바위 틈, 얕은 바다 바닥",
+      "food": "해조류",
+      "fun_fact": "입이 몸 아래쪽에 있어요"
+    },
+    "candidates": [
+      "말똥성게"
+    ]
+  },
+  {
+    "id": "sp_blue",
+    "name": "파란고리문어",
+    "emoji": "🐙",
+    "tone": "navy",
+    "confidence": "medium",
+    "safety": {
+      "level": "danger",
+      "reason": "강한 독이 있어요. 절대 만지지 말고 어른에게 알려요"
+    },
+    "protected": false,
+    "summary": "몸에 파란 고리 무늬가 있는 작은 문어예요.",
+    "info": {
+      "habitat": "따뜻한 바다의 바위 틈",
+      "food": "작은 게, 새우",
+      "fun_fact": "위협을 느끼면 파란 고리가 더 선명해져요"
+    },
+    "candidates": [
+      "주꾸미",
+      "낙지(새끼)"
+    ]
+  },
+  {
+    "id": "sp_anemone",
+    "name": "말미잘",
+    "emoji": "🌸",
+    "tone": "coral",
+    "confidence": "low",
+    "safety": {
+      "level": "caution",
+      "reason": "촉수에 쏘일 수 있어요"
+    },
+    "protected": false,
+    "summary": "바위에 붙어 꽃처럼 촉수를 펼치는 동물이에요.",
+    "info": {
+      "habitat": "바위 해변의 물웅덩이",
+      "food": "촉수에 걸린 작은 생물",
+      "fun_fact": "식물처럼 보이지만 동물이에요"
+    },
+    "candidates": [
+      "담황줄말미잘",
+      "풀색꽃해변말미잘"
+    ]
+  },
+  {
+    "id": "sp_isopod",
+    "name": "갯강구",
+    "emoji": "🪳",
+    "tone": "sand",
+    "confidence": "high",
+    "safety": {
+      "level": "safe",
+      "reason": "위험하지 않아요. 아주 빨라서 잡기 어려워요"
+    },
+    "protected": false,
+    "summary": "바위 해변을 재빠르게 달리는 작은 갑각류예요.",
+    "info": {
+      "habitat": "파도가 닿는 바위 위",
+      "food": "해조류 찌꺼기",
+      "fun_fact": "바다 청소부라고 불려요"
+    },
+    "candidates": [
+      "갯가톡토기"
+    ]
+  }
+]

@@ -1,0 +1,57 @@
+[
+  {
+    "id": "n1",
+    "title": "연안 수온 변화와 해파리 출현 시기",
+    "summary": "여름철 연안 수온이 오르면서 해파리가 나타나는 시기도 달라지고 있다는 내용이에요. 해수욕 전 안전 정보를 확인하세요.",
+    "source": "예시 매체 A",
+    "date": "2026-11-07",
+    "views": 250,
+    "ai": true,
+    "public": true,
+    "url": "https://example.com/news/1"
+  },
+  {
+    "id": "n2",
+    "title": "갯벌 체험, 물때를 먼저 확인하세요",
+    "summary": "갯벌 체험은 물이 빠지는 간조 전후에만 안전해요. 체험 전 물때와 돌아올 시간을 꼭 확인하자는 안내예요.",
+    "source": "예시 기관 B",
+    "date": "2026-11-06",
+    "views": 220,
+    "ai": true,
+    "public": true,
+    "url": "https://example.com/news/2"
+  },
+  {
+    "id": "n3",
+    "title": "바위 해변 생물, 관찰 뒤엔 제자리에",
+    "summary": "관찰한 생물을 원래 자리에 돌려놓는 작은 습관이 해변 생태계를 지킨다는 이야기예요.",
+    "source": "예시 매체 C",
+    "date": "2026-11-05",
+    "views": 190,
+    "ai": true,
+    "public": true,
+    "url": "https://example.com/news/3"
+  },
+  {
+    "id": "n4",
+    "title": "겨울 바다에서 만날 수 있는 생물들",
+    "summary": "추운 계절에도 바위 웅덩이에서는 말미잘, 군소 같은 생물을 볼 수 있다는 소개예요.",
+    "source": "예시 매체 A",
+    "date": "2026-11-04",
+    "views": 160,
+    "ai": true,
+    "public": true,
+    "url": "https://example.com/news/4"
+  },
+  {
+    "id": "n5",
+    "title": "해양 쓰레기 줍기 캠페인 소식",
+    "summary": "주말마다 열리는 해변 정화 활동과 참여 방법을 정리한 소식이에요.",
+    "source": "예시 기관 B",
+    "date": "2026-11-03",
+    "views": 130,
+    "ai": true,
+    "public": true,
+    "url": "https://example.com/news/5"
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "ob1",
+    "user": "u_me",
+    "species": "sp_star",
+    "date": "2026-10-12",
+    "place": "제주 · 협재 해변",
+    "memo": "바위 물웅덩이 안쪽에 붙어 있었어요.",
+    "post_id": "p1"
+  },
+  {
+    "id": "ob2",
+    "user": "u_me",
+    "species": "sp_star",
+    "date": "2026-11-01",
+    "place": "제주 · 월정리 해변",
+    "memo": "",
+    "post_id": null
+  },
+  {
+    "id": "ob3",
+    "user": "u_me",
+    "species": "sp_seahare",
+    "date": "2026-10-20",
+    "place": "부산 · 송정 해변",
+    "memo": "건드리지 않았는데도 보라색 물이 살짝 보였어요.",
+    "post_id": null
+  },
+  {
+    "id": "ob4",
+    "user": "u_me",
+    "species": "sp_moon",
+    "date": "2026-08-03",
+    "place": "강릉 · 경포 해변",
+    "memo": "물가에 밀려와 있어서 눈으로만 봤어요.",
+    "post_id": null
+  }
+]

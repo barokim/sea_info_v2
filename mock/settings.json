@@ -1,0 +1,16 @@
+{
+  "limit_member": 20,
+  "limit_guest": 3,
+  "max_mb": 10,
+  "formats": [
+    "jpg",
+    "jpeg",
+    "png"
+  ],
+  "report_hide": 5,
+  "banned": [
+    "광고",
+    "도배"
+  ],
+  "default_region": "jeju"
+}

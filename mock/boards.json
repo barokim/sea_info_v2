@@ -1,0 +1,115 @@
+[
+  {
+    "id": "obs",
+    "name": "관찰 이야기",
+    "type": "사진형",
+    "layout": "card",
+    "status": "운영 중",
+    "order": 1,
+    "system": true,
+    "perm": {
+      "list": "모두",
+      "read": "모두",
+      "write": "회원",
+      "comment": "회원",
+      "photo": "회원"
+    },
+    "fields": [],
+    "desc": "생물 알아보기에서 공유한 관찰 기록이 모여요"
+  },
+  {
+    "id": "qna",
+    "name": "궁금해요",
+    "type": "질문형",
+    "layout": "list",
+    "status": "운영 중",
+    "order": 2,
+    "system": false,
+    "perm": {
+      "list": "모두",
+      "read": "모두",
+      "write": "회원",
+      "comment": "회원",
+      "photo": "회원"
+    },
+    "fields": [],
+    "desc": "바다와 생물에 대해 묻고 답해요"
+  },
+  {
+    "id": "free",
+    "name": "자유 수다",
+    "type": "일반형",
+    "layout": "list",
+    "status": "운영 중",
+    "order": 3,
+    "system": false,
+    "perm": {
+      "list": "모두",
+      "read": "모두",
+      "write": "회원",
+      "comment": "회원",
+      "photo": "회원"
+    },
+    "fields": [],
+    "desc": "바다 이야기라면 무엇이든"
+  },
+  {
+    "id": "dive",
+    "name": "다이빙 기록",
+    "type": "일반형",
+    "layout": "list",
+    "status": "운영 중",
+    "order": 4,
+    "system": false,
+    "perm": {
+      "list": "모두",
+      "read": "모두",
+      "write": "회원",
+      "comment": "회원",
+      "photo": "회원"
+    },
+    "fields": [
+      {
+        "key": "depth",
+        "label": "관찰 수심(m)",
+        "type": "number",
+        "required": false,
+        "min": 0,
+        "max": 40,
+        "help": "모르면 비워 두세요",
+        "active": true
+      },
+      {
+        "key": "gear",
+        "label": "관찰 방법",
+        "type": "single",
+        "required": true,
+        "options": [
+          "맨눈",
+          "스노클링",
+          "다이빙"
+        ],
+        "active": true
+      }
+    ],
+    "desc": "수심과 관찰 방법을 함께 남기는 다이빙 관찰 기록"
+  },
+  {
+    "id": "notice",
+    "name": "공지사항",
+    "type": "일반형",
+    "layout": "list",
+    "status": "운영 중",
+    "order": 5,
+    "system": true,
+    "perm": {
+      "list": "모두",
+      "read": "모두",
+      "write": "관리자",
+      "comment": "관리자",
+      "photo": "관리자"
+    },
+    "fields": [],
+    "desc": "운영 소식"
+  }
+]

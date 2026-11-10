@@ -1,0 +1,59 @@
+[
+  {
+    "id": "u_me",
+    "nickname": "바다탐험가",
+    "character": "🐢",
+    "email": "explorer@example.com",
+    "role": "user",
+    "grade": "꼬마 해양학자",
+    "points": 340,
+    "aquarium_public": false,
+    "region": "jeju"
+  },
+  {
+    "id": "u_admin",
+    "nickname": "운영자 바다",
+    "character": "🐋",
+    "email": "admin@example.com",
+    "role": "admin",
+    "grade": "운영자",
+    "points": 0,
+    "aquarium_public": false,
+    "region": "busan"
+  },
+  {
+    "id": "u_2",
+    "nickname": "파도소리",
+    "character": "🐬",
+    "role": "user",
+    "aquarium_public": true
+  },
+  {
+    "id": "u_3",
+    "nickname": "해변산책러",
+    "character": "🦭",
+    "role": "user",
+    "aquarium_public": true
+  },
+  {
+    "id": "u_4",
+    "nickname": "바다연구가",
+    "character": "🐠",
+    "role": "user",
+    "aquarium_public": false
+  },
+  {
+    "id": "u_5",
+    "nickname": "푸른바다",
+    "character": "🐳",
+    "role": "user",
+    "aquarium_public": true
+  },
+  {
+    "id": "u_6",
+    "nickname": "조개친구",
+    "character": "🐚",
+    "role": "user",
+    "aquarium_public": true
+  }
+]

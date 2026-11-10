@@ -1,0 +1,20 @@
+[
+  {
+    "name": "예시 기관 B",
+    "url": "https://example.com/rss/b",
+    "checked": "2026-10-30",
+    "active": true
+  },
+  {
+    "name": "예시 매체 A",
+    "url": "https://example.com/rss/a",
+    "checked": "2026-10-28",
+    "active": true
+  },
+  {
+    "name": "예시 매체 C",
+    "url": "https://example.com/rss/c",
+    "checked": "2026-10-15",
+    "active": true
+  }
+]
