@@ -1,0 +1,384 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<div id="siaBar" style="position:sticky;top:0;z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:#0B7285;color:#fff;font:700 14px 'Noto Sans KR','Malgun Gothic',sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.25)">
+<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🌊 바다 놀이터</span>
+<span style="display:flex;gap:8px;flex:none">
+<button type="button" onclick="location.reload()" style="font:inherit;min-height:36px;padding:0 12px;border:1px solid rgba(255,255,255,.7);border-radius:10px;background:transparent;color:#fff;cursor:pointer">그만하고 처음으로</button>
+<button type="button" onclick="(function(){window.close();setTimeout(function(){location.href='/playground'},150)})()" style="font:inherit;min-height:36px;padding:0 12px;border:0;border-radius:10px;background:#fff;color:#0B7285;cursor:pointer">나가기 ✕</button>
+</span></div>
+
+<title>물방울 결투</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: one arena canvas framed by a scoreboard above and thumb controls below; single deep-sea look by choice. */
+:root{
+  --ground:#0B2128;
+  --panel:#12343E;
+  --panel-line:#1F4C58;
+  --ink:#EAF6F7;
+  --ink-soft:#9CC3C8;
+  --go:#1E8A5A;
+  --go-press:#16724A;
+  --alert:#E0742A;
+  --water:#5BB5DB;
+  --font:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--font);padding-block:20px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.01em}
+.sub{margin:0;color:var(--ink-soft);font-size:14px}
+.score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--panel-line);border-radius:12px;padding:10px 16px}
+.side{display:flex;align-items:baseline;gap:10px;min-width:0}
+.side.r{justify-content:flex-end}
+.name{font-size:15px;font-weight:700}
+.pts{font-size:34px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+.round{text-align:center;font-size:14px;color:var(--ink-soft);font-weight:500}
+.round b{display:block;font-size:20px;color:var(--ink)}
+.stage{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--panel-line);background:#8CCBE3}
+canvas{display:block;width:100%;height:auto;aspect-ratio:16/9;touch-action:none}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:20px;background:rgba(11,33,40,.78)}
+.overlay h2{margin:0;font-size:clamp(24px,5vw,40px);font-weight:900}
+.overlay p{margin:0;color:var(--ink-soft);max-width:46ch;font-size:clamp(13px,2.4vw,16px);line-height:1.6}
+.btn{font-family:var(--font);font-weight:700;border:0;border-radius:12px;min-height:56px;padding:0 24px;font-size:18px;color:#fff;background:var(--go);cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}
+.btn:hover{background:var(--go-press)}
+.btn:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.btn.alt{background:var(--panel);border:1px solid var(--panel-line);color:var(--ink)}
+.btn.alt:hover{background:var(--panel-line)}
+.btn.hot{background:var(--alert)}
+.controls{display:flex;flex-wrap:wrap;gap:10px}
+.move{display:flex;gap:10px}
+.move .btn{width:64px;padding:0;font-size:22px}
+.charge{flex:1 1 220px;min-width:0}
+.gauge{height:10px;border-radius:5px;background:var(--panel-line);overflow:hidden;margin-top:8px}
+.gauge i{display:block;height:100%;width:0;background:var(--water)}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0;padding:0;list-style:none}
+.rules li{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.55;color:var(--ink-soft)}
+.rules b{color:var(--ink)}
+kbd{font-family:var(--font);background:var(--panel-line);border-radius:4px;padding:1px 6px;font-size:12px;color:var(--ink)}
+</style>
+
+<div class="wrap">
+  <div>
+    <h1>물방울 결투</h1>
+    <p class="sub">문어가 복어의 물방울을 터뜨리고, 복어를 맞히면 이깁니다. 5판 합산 점수로 겨룹니다.</p>
+  </div>
+
+  <div class="score" aria-live="polite">
+    <div class="side"><span class="name">문어 (나)</span><span class="pts" id="ptsMe">0</span></div>
+    <div class="round"><b id="roundNo">1 / 5판</b><span id="roundTxt">준비</span></div>
+    <div class="side r"><span class="pts" id="ptsCpu">0</span><span class="name">복어</span></div>
+  </div>
+
+  <div class="stage">
+    <canvas id="cv" aria-label="물방울 결투 게임 화면"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ovTitle">문어 대 복어</h2>
+      <p id="ovText">버튼을 누르고 있으면 물방울이 커지고, 떼면 날아갑니다. 큰 물방울은 세지만 느립니다.</p>
+      <button class="btn" id="ovBtn" type="button">결투 시작</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="move">
+      <button class="btn alt" id="up" type="button" aria-label="위로 이동">▲</button>
+      <button class="btn alt" id="down" type="button" aria-label="아래로 이동">▼</button>
+    </div>
+    <div class="charge">
+      <button class="btn hot" id="charge" type="button" style="width:100%">꾹 눌러서 충전, 떼면 발사</button>
+      <div class="gauge" aria-hidden="true"><i id="gauge"></i></div>
+    </div>
+  </div>
+
+  <ul class="rules">
+    <li><b>작은 물방울</b>은 빠르고 약합니다. 복어에게 닿기만 하면 됩니다.</li>
+    <li><b>큰 물방울</b>은 느리지만 상대 물방울을 부딪혀 터뜨리고 살아남습니다.</li>
+    <li><b>조작</b> 위아래 이동은 <kbd>W</kbd> <kbd>S</kbd> 또는 <kbd>↑</kbd> <kbd>↓</kbd>, 충전과 발사는 <kbd>Space</kbd> 키입니다. 물방울은 한 번에 하나만 쏠 수 있습니다.</li>
+  </ul>
+</div>
+
+<script>
+(function(){
+  var W=960,H=540,ROUNDS=5;
+  var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  var dpr=Math.min(window.devicePixelRatio||1,2);
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  var $=function(id){return document.getElementById(id)};
+  var ptsMe=$('ptsMe'),ptsCpu=$('ptsCpu'),roundNo=$('roundNo'),roundTxt=$('roundTxt');
+  var overlay=$('overlay'),ovTitle=$('ovTitle'),ovText=$('ovText'),ovBtn=$('ovBtn');
+  var gaugeEl=$('gauge'),chargeBtn=$('charge');
+
+  var YMIN=100,YMAX=H-110,CHAR_R=48;
+  var R_MIN=14,R_MAX=60,CHARGE_TIME=1.5;
+  var phase='intro',round=1,winsMe=0,winsCpu=0,between=0,msg='',msgColor='#fff',t=0;
+  var player,cpu,bubbles=[],drops=[],ambient=[];
+  var keys={up:false,down:false};
+
+  function mk(x,isCpu){return {x:x,y:H/2,hit:0,charging:false,charge:0,target:0,wait:0,goalY:H/2,thinkT:0,cpu:isCpu}}
+  function bubbleSpeed(r){return 560-r*6.5}
+  function chargeR(c){return R_MIN+Math.min(1,c/CHARGE_TIME)*(R_MAX-R_MIN)}
+  function hasBubble(owner){for(var i=0;i<bubbles.length;i++)if(bubbles[i].owner===owner)return true;return false}
+
+  /* sound */
+  var ac=null;
+  function beep(f,d,type,vol){
+    try{
+      if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();
+      var o=ac.createOscillator(),g=ac.createGain();
+      o.type=type||'sine';o.frequency.value=f;
+      g.gain.value=vol||.06;g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+d);
+      o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d);
+    }catch(e){}
+  }
+  function pop(){beep(520,.12,'triangle',.08);setTimeout(function(){beep(300,.12,'triangle',.06)},40)}
+
+  function burst(x,y,n,rr){
+    for(var i=0;i<n;i++){
+      var a=Math.random()*Math.PI*2,s=80+Math.random()*260*(rr/40+.4);
+      drops.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-40,life:.6+Math.random()*.5,r:2+Math.random()*5});
+    }
+  }
+
+  function startRound(){
+    player=mk(110,false);cpu=mk(W-110,true);
+    bubbles=[];drops=[];
+    cpu.wait=.8+Math.random()*.6;
+    phase='play';msg='';
+    roundNo.textContent=round+' / '+ROUNDS+'판';
+    roundTxt.textContent='진행 중';
+    overlay.hidden=true;
+  }
+  function showOverlay(title,text,btn){ovTitle.textContent=title;ovText.textContent=text;ovBtn.textContent=btn;overlay.hidden=false;ovBtn.focus({preventScroll:true})}
+
+  function endRound(meWon){
+    phase='between';between=1.7;
+    if(meWon){winsMe++;msg='명중! 복어가 맞았다';msgColor='#FFE08A';roundTxt.textContent='문어 승'}
+    else{winsCpu++;msg='으악! 문어가 맞았다';msgColor='#FFB38A';roundTxt.textContent='복어 승'}
+    ptsMe.textContent=winsMe;ptsCpu.textContent=winsCpu;
+    var loser=meWon?cpu:player;loser.hit=1;
+    burst(loser.x,loser.y,34,50);pop();
+  }
+  function afterBetween(){
+    if(round>=ROUNDS){
+      phase='final';
+      var title=winsMe>winsCpu?'문어 승리!':(winsMe<winsCpu?'복어 승리!':'무승부!');
+      var text=winsMe>winsCpu?('최종 '+winsMe+' 대 '+winsCpu+'. 바다의 물방울왕은 문어입니다.'):
+               winsMe<winsCpu?('최종 '+winsMe+' 대 '+winsCpu+'. 복어가 빵빵하게 이겼습니다. 다시 도전해 보세요.'):
+               ('최종 '+winsMe+' 대 '+winsCpu+'. 승부가 나지 않았습니다.');
+      roundTxt.textContent='최종 결과';
+      showOverlay(title,text,'다시 하기');
+    }else{round++;startRound()}
+  }
+  ovBtn.addEventListener('click',function(){
+    beep(660,.1,'triangle',.06);
+    if(phase==='intro'||phase==='final'){round=1;winsMe=0;winsCpu=0;ptsMe.textContent=0;ptsCpu.textContent=0}
+    startRound();
+  });
+
+  /* input */
+  function pressCharge(){
+    if(phase!=='play'||player.charging||hasBubble('me'))return;
+    player.charging=true;player.charge=0;
+  }
+  function releaseCharge(){
+    if(!player||!player.charging)return;
+    var r=chargeR(player.charge);
+    fire(player,'me',1,r);
+  }
+  function fire(who,owner,dir,r){
+    who.charging=false;
+    var x=who.x+dir*(56+r*.6);
+    bubbles.push({x:x,y:who.y,r:r,vx:dir*bubbleSpeed(r),owner:owner,seen:false});
+    beep(280+ (R_MAX-r)*6,.09,'sine',.05);
+  }
+  function hold(btn,fn){
+    function down(e){e.preventDefault();try{btn.setPointerCapture(e.pointerId)}catch(_){}fn(true)}
+    function up(e){fn(false)}
+    btn.addEventListener('pointerdown',down);
+    btn.addEventListener('pointerup',up);
+    btn.addEventListener('pointercancel',up);
+    btn.addEventListener('lostpointercapture',up);
+  }
+  hold(chargeBtn,function(on){on?pressCharge():releaseCharge()});
+  hold($('up'),function(on){keys.up=on});
+  hold($('down'),function(on){keys.down=on});
+  window.addEventListener('keydown',function(e){
+    var k=e.key;
+    if(k===' '||k==='Spacebar'){if(phase==='play'){e.preventDefault();if(!e.repeat)pressCharge()}}
+    else if(k==='ArrowUp'||k==='w'||k==='W'){if(phase==='play')e.preventDefault();keys.up=true}
+    else if(k==='ArrowDown'||k==='s'||k==='S'){if(phase==='play')e.preventDefault();keys.down=true}
+  });
+  window.addEventListener('keyup',function(e){
+    var k=e.key;
+    if(k===' '||k==='Spacebar'){releaseCharge()}
+    else if(k==='ArrowUp'||k==='w'||k==='W'){keys.up=false}
+    else if(k==='ArrowDown'||k==='s'||k==='S'){keys.down=false}
+  });
+  window.addEventListener('blur',function(){keys.up=keys.down=false;releaseCharge()});
+
+  /* cpu */
+  function cpuThink(dt){
+    cpu.thinkT-=dt;
+    if(cpu.thinkT<=0){
+      cpu.thinkT=.6+Math.random()*.9;
+      cpu.goalY=YMIN+Math.random()*(YMAX-YMIN);
+    }
+    // dodge an incoming bubble once, sometimes
+    for(var i=0;i<bubbles.length;i++){
+      var b=bubbles[i];
+      if(b.owner==='me'&&!b.seen&&b.x>W*.42){
+        b.seen=true;
+        if(Math.random()<.55&&Math.abs(b.y-cpu.y)<b.r+CHAR_R+10){
+          cpu.goalY=b.y>cpu.y?Math.max(YMIN,b.y-(b.r+CHAR_R+40)):Math.min(YMAX,b.y+(b.r+CHAR_R+40));
+          cpu.goalY=Math.max(YMIN,Math.min(YMAX,cpu.goalY));
+        }
+      }
+    }
+    var dy=cpu.goalY-cpu.y,sp=150*dt;
+    cpu.y+=Math.abs(dy)<sp?dy:Math.sign(dy)*sp;
+    if(!cpu.charging&&!hasBubble('cpu')){
+      cpu.wait-=dt;
+      if(cpu.wait<=0){
+        cpu.charging=true;cpu.charge=0;
+        cpu.target=Math.random()*CHARGE_TIME;
+        if(Math.random()<.65){cpu.goalY=Math.max(YMIN,Math.min(YMAX,player.y+(Math.random()-.5)*70));cpu.thinkT=1.2}
+      }
+    }else if(cpu.charging){
+      cpu.charge+=dt;
+      if(cpu.charge>=cpu.target){fire(cpu,'cpu',-1,chargeR(cpu.charge));cpu.wait=.5+Math.random()*.9}
+    }
+  }
+
+  /* update */
+  function update(dt){
+    t+=dt;
+    if(ambient.length<14&&Math.random()<.08)ambient.push({x:Math.random()*W,y:H-100,r:2+Math.random()*5,v:20+Math.random()*30});
+    for(var a=ambient.length-1;a>=0;a--){ambient[a].y-=ambient[a].v*dt;if(ambient[a].y<-10)ambient.splice(a,1)}
+    for(var d=drops.length-1;d>=0;d--){var p=drops[d];p.life-=dt;p.vy+=500*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;if(p.life<=0)drops.splice(d,1)}
+    if(player){player.hit=Math.max(0,player.hit-dt*.6);cpu.hit=Math.max(0,cpu.hit-dt*.6)}
+
+    if(phase==='between'){between-=dt;if(between<=0)afterBetween();return}
+    if(phase!=='play')return;
+
+    var mv=(keys.down?1:0)-(keys.up?1:0);
+    player.y=Math.max(YMIN,Math.min(YMAX,player.y+mv*270*dt));
+    if(player.charging)player.charge+=dt;
+    cpuThink(dt);
+
+    // bubbles
+    for(var i=0;i<bubbles.length;i++)bubbles[i].x+=bubbles[i].vx*dt;
+    // bubble vs bubble
+    var me=null,cp=null;
+    for(i=0;i<bubbles.length;i++){if(bubbles[i].owner==='me')me=bubbles[i];else cp=bubbles[i]}
+    if(me&&cp){
+      var dx=me.x-cp.x,dy=me.y-cp.y;
+      if(Math.sqrt(dx*dx+dy*dy)<me.r+cp.r){
+        var mx=(me.x+cp.x)/2,my=(me.y+cp.y)/2;
+        if(Math.abs(me.r-cp.r)<4){me.dead=cp.dead=true;burst(mx,my,26,me.r)}
+        else{
+          var big=me.r>cp.r?me:cp,small=big===me?cp:me;
+          small.dead=true;burst(small.x,small.y,22,small.r);
+          big.r=Math.sqrt(big.r*big.r-small.r*small.r*.8);
+          if(big.r<9){big.dead=true;burst(big.x,big.y,14,big.r)}
+        }
+        pop();
+      }
+    }
+    // bubble vs character
+    for(i=0;i<bubbles.length;i++){
+      var b=bubbles[i];if(b.dead)continue;
+      var tgt=b.owner==='me'?cpu:player;
+      var ddx=b.x-tgt.x,ddy=b.y-tgt.y;
+      if(Math.sqrt(ddx*ddx+ddy*ddy)<b.r+CHAR_R-6){b.dead=true;endRound(b.owner==='me');break}
+    }
+    bubbles=bubbles.filter(function(b){return !b.dead&&b.x>-80&&b.x<W+80});
+    var g=player.charging?Math.min(1,player.charge/CHARGE_TIME):0;
+    gaugeEl.style.width=(g*100)+'%';
+  }
+
+  /* draw */
+  function drawBubble(x,y,r){
+    var g=ctx.createRadialGradient(x-r*.35,y-r*.4,r*.1,x,y,r);
+    g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.4,'rgba(190,233,247,.55)');g.addColorStop(1,'rgba(91,181,219,.65)');
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle='#3E9BC5';ctx.stroke();
+    ctx.beginPath();ctx.ellipse(x-r*.38,y-r*.42,r*.22,r*.12,-.5,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,.9)';ctx.fill();
+  }
+  function drawOcto(c){
+    var sh=c.hit>0?Math.sin(t*50)*6*c.hit:0,x=c.x+sh,y=c.y;
+    ctx.lineCap='round';ctx.strokeStyle='#6A49B0';ctx.lineWidth=17;
+    for(var i=0;i<4;i++){
+      var ox=(i-1.5)*26;ctx.beginPath();ctx.moveTo(x+ox,y+34);
+      ctx.bezierCurveTo(x+ox+Math.sin(t*3+i)*16,y+56,x+ox-Math.sin(t*3+i)*16,y+70,x+ox+Math.sin(t*3+i*2)*10,y+88);ctx.stroke();
+    }
+    ctx.fillStyle='#7A5CC2';ctx.beginPath();ctx.ellipse(x,y-8,56,62,0,0,Math.PI*2);ctx.fill();
+    var ex=[-19,19],hit=c.hit>0.3;
+    for(i=0;i<2;i++){
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+ex[i],y-10,hit?17:15,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#0E2A33';ctx.beginPath();ctx.arc(x+ex[i]+(hit?0:5),y-8,hit?4:8,0,Math.PI*2);ctx.fill();
+    }
+    ctx.fillStyle='rgba(233,143,176,.85)';ctx.beginPath();ctx.arc(x-38,y+14,9,0,Math.PI*2);ctx.arc(x+38,y+14,9,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#3D2A73';ctx.lineWidth=5;ctx.beginPath();
+    if(hit||c.charging){ctx.fillStyle='#3D2A73';ctx.ellipse(x+4,y+24,hit?10:7,hit?13:9,0,0,Math.PI*2);ctx.fill()}
+    else{ctx.arc(x+4,y+14,14,.15*Math.PI,.85*Math.PI);ctx.stroke()}
+  }
+  function drawPuffer(c){
+    var sh=c.hit>0?Math.sin(t*50)*6*c.hit:0,x=c.x+sh,y=c.y,hit=c.hit>0.3;
+    var k=(hit?1.15:1)*(c.charging?1+Math.min(1,c.charge/CHARGE_TIME)*.12:1);
+    ctx.save();ctx.translate(x,y);ctx.scale(k,k);
+    ctx.strokeStyle='#D2831A';ctx.lineWidth=8;ctx.lineCap='round';
+    for(var i=0;i<18;i++){var a=i/18*Math.PI*2;ctx.beginPath();ctx.moveTo(Math.cos(a)*46,Math.sin(a)*46);ctx.lineTo(Math.cos(a)*(hit?70:60),Math.sin(a)*(hit?70:60));ctx.stroke()}
+    ctx.fillStyle='#E39A22';ctx.beginPath();ctx.ellipse(-48,16,22,12,-.4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#F6BE4F';ctx.beginPath();ctx.arc(0,0,48,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#FCE3A8';ctx.beginPath();ctx.ellipse(-4,20,32,20,0,0,Math.PI*2);ctx.fill();
+    for(i=0;i<2;i++){var ex=-15+i*30;
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ex-4,-10,hit?15:12,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#0E2A33';ctx.beginPath();ctx.arc(ex-(hit?4:8),-8,hit?4:6,0,Math.PI*2);ctx.fill();
+    }
+    ctx.strokeStyle='#0E2A33';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-30,-28);ctx.lineTo(-8,-24);ctx.moveTo(22,-24);ctx.lineTo(10,-28);ctx.stroke();
+    ctx.fillStyle='#8B2E2E';ctx.beginPath();ctx.ellipse(-10,22,hit?10:7,hit?13:9,0,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+  function draw(){
+    var g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#CDEBF6');g.addColorStop(1,'#7FC3DE');
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(255,255,255,.55)';
+    for(var i=0;i<ambient.length;i++){var a=ambient[i];ctx.beginPath();ctx.arc(a.x+Math.sin(a.y/30)*6,a.y,a.r,0,Math.PI*2);ctx.fill()}
+    ctx.fillStyle='#E3C99A';ctx.fillRect(0,H-70,W,70);
+    ctx.fillStyle='#CFB27F';ctx.fillRect(0,H-70,W,6);
+    ctx.strokeStyle='#3E9B6B';ctx.lineWidth=8;ctx.lineCap='round';
+    [300,340,640,700].forEach(function(sx,i){ctx.beginPath();ctx.moveTo(sx,H-70);ctx.quadraticCurveTo(sx+Math.sin(t*1.6+i)*16,H-110,sx+Math.sin(t*1.6+i)*22,H-140+i%2*20);ctx.stroke()});
+    if(!player){player=mk(110,false);cpu=mk(W-110,true)}
+    drawOcto(player);drawPuffer(cpu);
+    // charging bubbles
+    [player,cpu].forEach(function(c){
+      if(c.charging){var r=chargeR(c.charge),dir=c.cpu?-1:1,wob=Math.sin(t*30)*(c.charge>=CHARGE_TIME?2.5:0.8);drawBubble(c.x+dir*(56+r*.6),c.y+wob,r)}
+    });
+    for(i=0;i<bubbles.length;i++)drawBubble(bubbles[i].x,bubbles[i].y,bubbles[i].r);
+    ctx.fillStyle='rgba(91,181,219,.85)';
+    for(i=0;i<drops.length;i++){var p=drops[i];ctx.globalAlpha=Math.max(0,Math.min(1,p.life*2));ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill()}
+    ctx.globalAlpha=1;
+    if(phase==='between'&&msg){
+      ctx.font='900 44px "Noto Sans KR",sans-serif';ctx.textAlign='center';ctx.lineWidth=8;ctx.strokeStyle='rgba(11,33,40,.85)';
+      ctx.strokeText(msg,W/2,H/2-60);ctx.fillStyle=msgColor;ctx.fillText(msg,W/2,H/2-60);
+    }
+    if(phase==='play'&&player&&!player.charging&&!hasBubble('me')&&t%4<2.5&&round===1&&winsMe+winsCpu===0){
+      ctx.font='700 20px "Noto Sans KR",sans-serif';ctx.textAlign='center';ctx.fillStyle='rgba(11,33,40,.8)';
+      ctx.fillText('Space 또는 충전 버튼을 꾹 누르세요',W/2,H-30);
+    }
+  }
+
+  var last=performance.now();
+  function loop(now){
+    var dt=Math.min(.033,(now-last)/1000);last=now;
+    update(dt);draw();requestAnimationFrame(loop);
+  }
+  player=mk(110,false);cpu=mk(W-110,true);
+  requestAnimationFrame(loop);
+})();
+</script>
+
+</body></html>

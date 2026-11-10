@@ -22,7 +22,8 @@ STATUSES = ["접수", "처리 중", "완료"]
 JIRA_NOTE = {
     "created": "담당 팀 작업 목록(Jira)에 바로 올렸어요.",
     "done": "담당 팀이 작업을 마쳤어요.",
-    "failed": "담당 팀 작업 목록(Jira)에는 아직 올리지 못했어요. 제보는 잘 접수됐고, 운영팀이 다시 올려요.",
+    # [BARO-CHANGE-003] 응답 유실로 성공 여부가 불확실한 Jira 작업도 실패로 단정하지 않는다.
+    "failed": "제보는 접수됐어요. 담당 팀 작업 목록(Jira)의 등록 여부는 운영팀이 확인해요.",
     "off": "운영팀이 확인한 뒤 담당 팀에 전달해요.",
 }
 # 관리자 화면 표시 (글자, 칩 종류)
@@ -50,8 +51,10 @@ def lookup_verify(rid: str, email: str, code: str) -> dict:
 
 
 # ---------- 관리자 (A-06) ----------
-def admin_list(status: str | None = None, kind: str | None = None) -> list[dict]:
-    params = {k: v for k, v in (("status", status), ("type", kind)) if v}
+# [BARO-CHANGE-004] 기존 호출과 호환되는 선택 인자로 서버 검색·Jira 필터를 전달한다.
+def admin_list(status: str | None = None, kind: str | None = None,
+               jira_status: str | None = None, q: str = "") -> list[dict]:
+    params = {k: v for k, v in (("status", status), ("type", kind), ("jira_status", jira_status), ("q", q)) if v}
     return api.get("/admin/inquiries", params=params)
 
 

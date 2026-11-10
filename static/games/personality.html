@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>나의 바다 성향 찾기 · 바다 놀이터</title>
+<style>
+html,body{margin:0;height:100%;background:#0B2128;font-family:'Noto Sans KR','Malgun Gothic',sans-serif}
+body{display:flex;flex-direction:column}
+#siaBar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:#0B7285;color:#fff;font-weight:700;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+#siaBar span.t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#siaBar .b{display:flex;gap:8px;flex:none}
+#siaBar button{font:inherit;min-height:36px;padding:0 12px;border-radius:10px;cursor:pointer}
+#re{border:1px solid rgba(255,255,255,.7);background:transparent;color:#fff}
+#ex{border:0;background:#fff;color:#0B7285}
+iframe{flex:1;width:100%;border:0;background:#fff}
+</style></head><body>
+<div id="siaBar"><span class="t">🌊 바다 놀이터 · 나의 바다 성향 찾기</span>
+<span class="b"><button id="re" type="button">그만하고 처음으로</button><button id="ex" type="button">나가기 ✕</button></span></div>
+<iframe id="g" src="https://ocean-personality-2026.aio-4-9335.chatgpt.site/" title="나의 바다 성향 찾기" allow="fullscreen" referrerpolicy="no-referrer"></iframe>
+<script>
+var U="https://ocean-personality-2026.aio-4-9335.chatgpt.site/",g=document.getElementById('g');
+document.getElementById('re').onclick=function(){g.src='about:blank';setTimeout(function(){g.src=U},60)};
+document.getElementById('ex').onclick=function(){window.close();setTimeout(function(){location.href='/playground'},150)};
+</script></body></html>

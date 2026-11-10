@@ -7,10 +7,24 @@
 """
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 import streamlit as st
 
 from components import nav
 from services import auth
+
+
+def _here_now() -> tuple[str, dict] | None:
+    """지금 보고 있는 화면의 (key, 주소 뒤 값). 주소를 알 수 없으면 None."""
+    try:
+        path = urlparse(st.context.url).path.strip("/")
+    except Exception:  # noqa: BLE001 - 시험 환경 등에서 주소를 못 읽을 때
+        return None
+    for key, spec in nav.ALL.items():
+        if spec[3] == path:
+            return key, {k: v for k, v in st.query_params.items() if k != "as"}
+    return None
 
 
 def login_required(can_do: str, here: str | None = None, **params) -> bool:
@@ -29,6 +43,9 @@ def login_required(can_do: str, here: str | None = None, **params) -> bool:
         if st.button("로그인 / 회원가입", type="primary", width="stretch", key="gate_login"):
             if here:
                 nav.remember_here(here, **params)
+            elif _here_now():  # here를 안 줬으면 지금 화면으로 돌아와요
+                key, qp = _here_now()
+                nav.remember_here(key, **qp)
             st.session_state["after_login"] = st.session_state.get("back_to")
             nav.go("login")
         if st.button("나중에 할게요", width="stretch", key="gate_later"):

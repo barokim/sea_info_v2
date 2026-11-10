@@ -30,9 +30,6 @@ UNKNOWN = {"id": UNKNOWN_ID, "name": "미확인 생물", "emoji": "❔", "tone":
            "protected": False, "summary": "아직 이름을 정하지 않은 생물이에요.",
            "info": {"habitat": "", "food": "", "fun_fact": ""}, "candidates": []}
 
-# 시안 캡처(?shot=unknown)용 미확인 기록 예시 (체험 회원에게 한 번만 담아요)
-UNKNOWN_DEMO = {"date": "2026-11-05", "place": "제주 · 협재 해변", "memo": "모래 속으로 쏙 숨어 버렸어요. 이름을 모르겠어요."}
-
 
 # ---------- 날짜 ----------
 def fmt_date(d: str, short: bool = True) -> str:
@@ -118,15 +115,6 @@ def set_public(on: bool) -> str:
     if S.get("user"):
         S["user"]["aquarium_public"] = out["public"]
     return _done(out)["message"]
-
-
-def ensure_unknown_demo(uid: str) -> None:
-    """시안 캡처용: 미확인 기록이 하나도 없으면 예시 기록을 한 번 담아요 (이미 있으면 그대로)."""
-    if find_card(uid, UNKNOWN_ID):
-        return
-    sp = db.species(UNKNOWN_ID) or UNKNOWN
-    db.add_observation(uid, {**UNKNOWN, **sp, "photo_id": "", "source": "example"}, UNKNOWN_DEMO["date"],
-                       UNKNOWN_DEMO["place"], UNKNOWN_DEMO["memo"], share=False)
 
 
 # ---------- 비회원 예시 수족관 ----------

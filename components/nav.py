@@ -11,6 +11,9 @@ import streamlit as st
 # key: (파일, 메뉴 이름, 아이콘, 주소, 메뉴에 보임?)
 CUSTOMER = {
     "home": ("views/home.py", "홈", ":material/home:", "home", True),
+    # [BARO-SCOPE-EXTENSION] 사용자가 별도 검색 결과 화면 등록을 추가 승인했다.
+    # [BARO-CHANGE-033] 홈 검색 제출로 진입하며 사이드바에는 새 메뉴를 늘리지 않는다.
+    "species_search": ("views/species_search.py", "생물 이름 검색", ":material/search:", "species-search", False),
     "identify": ("views/identify.py", "생물 알아보기", ":material/photo_camera:", "identify", True),
     "aquarium": ("views/aquarium.py", "나의 수족관", ":material/water:", "aquarium", True),
     "community": ("views/community.py", "커뮤니티", ":material/forum:", "community", True),

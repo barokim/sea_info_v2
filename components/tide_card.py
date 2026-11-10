@@ -7,11 +7,12 @@
 지역 기억: st.session_state["tide_region"]
     처음엔 회원의 지역 → 없으면 운영 설정(A-07)의 기본 지역.
     회원은 계정(PUT /me/region → User.region)에, 비회원은 이번 방문 동안만 기억해요.
-물때 값은 서버가 Redis에 1시간 캐시해서 줘요 (GET /tide/regions · /tide/<지역>).
+지역 목록은 자료 조회와 분리하고, 지역별 물때는 서버가 Redis에 1시간 캐시해요.
 """
 from __future__ import annotations
 
 import html
+from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 
@@ -48,10 +49,43 @@ def best_time(t: dict) -> tuple[str, str]:
     return f"오늘 {low} 전후로 물이 가장 많이 빠져요", tip
 
 
-def _default_region() -> str:
+def _default_region(regions: dict) -> str:
     user = auth.current_user()
-    rid = (user or {}).get("region") or db.settings().get("default_region", "jeju")
-    return rid if rid in db.regions() else next(iter(db.regions()))
+    rid = (user or {}).get("region")
+    if rid not in regions:
+        try:
+            rid = db.settings().get("default_region", "jeju")
+        except Exception:
+            rid = None
+    return rid if rid in regions else next(iter(regions))
+
+
+def _data_notice(t: dict) -> str:
+    """자료 시각과 예시 여부를 알린다. 갱신 시각을 예보 대상 날짜로 간주하지 않는다."""
+    source = t.get("source") or "출처 미확인"
+    if "예시" in source:
+        return "예시 데이터예요. 실제 관측·예보나 오늘의 관찰 시간 안내로 사용할 수 없어요."
+    # [BARO-SCOPE-EXTENSION] 주요 5개 파일 밖의 승인된 연관 수정.
+    # 변경 이유: tide.py의 공식 예보 대상 날짜·지점을 실제 관측과 구분해 표시한다.
+    # [BARO-CHANGE-012] 갱신시각 대신 명시적인 예보 대상 날짜로 오늘 자료인지 판단한다.
+    if t.get("data_kind") == "forecast" and t.get("target_date"):
+        today = datetime.now(timezone(timedelta(hours=9))).date().isoformat()
+        if t["target_date"] != today:
+            return f"{t['target_date']} 대상 예보예요. 오늘의 물때로 사용할 수 없어요."
+        return "오늘의 고·저조 예보예요. 실제 관측값이 아니며 현장 안전이나 관찰 가능 시간을 보장하지 않아요."
+    try:
+        stamp = datetime.fromisoformat(t.get("updated", ""))
+        kst = timezone(timedelta(hours=9))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=kst)
+        today = datetime.now(kst).date()
+        if stamp.astimezone(kst).date() < today:
+            return "이전 날짜의 자료예요. 오늘의 물때로 사용할 수 없어요."
+        if stamp.astimezone(kst).date() > today:
+            return "자료 시각이 현재 날짜보다 미래예요. 최신 여부를 확인할 수 없어요."
+    except (ValueError, TypeError):
+        return "자료 날짜를 확인할 수 없어 최신 여부를 알 수 없어요."
+    return "자료 시각은 오늘이지만 관측·예보 구분과 대상 날짜가 제공되지 않아 오늘의 물때인지 확인할 수 없어요."
 
 
 def _pick_region() -> None:
@@ -75,10 +109,28 @@ def _row(label: str, value: str) -> None:
 
 
 def tide_card(fail: bool = False) -> None:
-    regions = db.regions()
-    rid = S.setdefault("tide_region", _default_region())
+    try:
+        regions = db.regions()
+    except Exception:
+        with st.container(border=True):
+            st.markdown("**물때 정보**")
+            st.warning("지역 목록을 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.")
+        return
+    if not regions:
+        with st.container(border=True):
+            st.markdown("**물때 정보**")
+            st.info("선택할 수 있는 물때 지역이 없어요.")
+        return
+    rid = S.get("tide_region")
+    # [BARO-CHANGE-013] 계정이 바뀌면 이전 사용자의 선택·이전 자료를 재사용하지 않는다.
+    owner = (auth.current_user() or {}).get("id") or "guest"
+    if S.get("tide_owner") != owner:
+        for key in ("tide_region", "tide_pick", "tide_last"):
+            S.pop(key, None)
+        S["tide_owner"] = owner
+        rid = None
     if rid not in regions:
-        rid = S["tide_region"] = _default_region()
+        rid = S["tide_region"] = _default_region(regions)
 
     stale = False
     try:
@@ -89,12 +141,14 @@ def tide_card(fail: bool = False) -> None:
     except Exception:
         stale = True
         last = S.get("tide_last")
-        if not last or last.get("region") != rid:
-            last = {**regions[rid], "region": rid}  # 마지막으로 받아 둔 값
-        t = last
+        if not isinstance(last, dict) or last.get("region") != rid:
+            # [BARO-CHANGE-014] 자료가 없어도 지역 선택 UI는 남겨 다른 지역을 고를 수 있게 한다.
+            t = {**regions[rid], "available": False}
+        else:
+            t = last
 
     with st.container(border=True, gap="small"):
-        st.markdown('<h2 class="sia-h2">오늘의 물때</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="sia-h2">물때 정보</h2>', unsafe_allow_html=True)
         with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center",
                           gap="small"):
             st.markdown(f":material/location_on: **{t['name']}**", width="content")
@@ -109,12 +163,35 @@ def tide_card(fail: bool = False) -> None:
                           width="stretch", help="다음 단계에 열려요.")
                 st.caption("‘내 위치로 찾기’는 준비 중이에요.")
 
-        _row("만조 (물 들어옴)", " · ".join(t["high"]))
-        _row("간조 (물 빠짐)", " · ".join(t["low"]))
+        if not t.get("available", True):
+            st.warning("선택한 지역의 물때를 불러오지 못했어요. 다른 지역을 고르거나 잠시 뒤 다시 시도해 주세요.")
+            return
+        if t.get("station_name"):
+            st.caption(f"예보 지점: {t['station_name']} ({t.get('station_id', '')}) · 대상 날짜: {t.get('target_date', '미확인')}")
+            st.caption("선택 지역의 대표 예보지점 자료예요. 해당 해변과 위치가 다를 수 있어요.")
+        _row("만조 (물 들어옴)", " · ".join(t["high"]) or "예보 시각 없음")
+        _row("간조 (물 빠짐)", " · ".join(t["low"]) or "예보 시각 없음")
         _row("파고 (파도 높이)", t["wave"])
 
-        head, tip = best_time(t)
-        st.info(f"**{head}**\n\n{tip}", icon=":material/schedule:")
+        # [BARO-CHANGE-050] 예보와 별도 블록으로 dtRecent 실측값·관측 지점·자료 시각을 표시한다.
+        st.markdown("**현재 관측값**")
+        observation_status = t.get("observation_status", "not_configured")
+        if observation_status in ("ok", "stale"):
+            level = t.get("observation_level_cm")
+            temperature = t.get("observation_water_temp_c")
+            _row("현재 조위", f"{level:g} cm" if isinstance(level, (int, float)) else "자료 없음")
+            _row("현재 수온", f"{temperature:g} °C" if isinstance(temperature, (int, float)) else "자료 없음")
+            st.caption(f"관측소: {t.get('observation_station_name') or '미확인'} "
+                       f"({t.get('observation_station_id') or '코드 미확인'}) · "
+                       f"관측 시각: {t.get('observation_time') or '미확인'} · "
+                       f"출처: {t.get('observation_source') or '미확인'}")
+            if observation_status == "stale":
+                st.warning(t.get("observation_message") or "관측 시각을 확인해 주세요.")
+        else:
+            st.caption(t.get("observation_message") or "현재 관측 자료를 표시할 수 없어요.")
+
+        st.info(_data_notice(t), icon=":material/info:")
         if stale:
-            st.caption(":material/warning: 새 정보를 불러오지 못했어요. 정보가 오래됐을 수 있어요.")
-        st.caption(f"기준 {t['updated']} · 출처: {t.get('source') or '예시 데이터'}")
+            st.warning("재조회에 실패해 같은 지역에서 마지막으로 받은 자료를 표시해요. 최신 자료가 아니에요.")
+        label = "수집 시각" if t.get("data_kind") == "forecast" else "자료 시각"
+        st.caption(f"{label} {t.get('updated') or '미확인'} · 출처: {t.get('source') or '미확인'}")

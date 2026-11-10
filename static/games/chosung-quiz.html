@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#063b59">
+  <title>바닷속 초성 탐험대</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #073b59;
+      --blue: #087ea4;
+      --aqua: #53d6ce;
+      --foam: #eafaff;
+      --ink: #12384a;
+      --muted: #648293;
+      --coral: #ff806d;
+      --card: rgba(255,255,255,.94);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+      background: linear-gradient(180deg, #b9f5f0 0%, #e5fbff 42%, #d7f0ff 100%);
+      overflow-x: hidden;
+    }
+    body::before, body::after {
+      content: ""; position: fixed; z-index: -1; pointer-events: none;
+      width: 52vw; height: 52vw; border-radius: 50%; filter: blur(2px);
+      background: rgba(255,255,255,.26);
+    }
+    body::before { top: -30vw; left: -12vw; }
+    body::after { bottom: -36vw; right: -14vw; }
+    .shell { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 44px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+    .brand { display: flex; align-items: center; gap: 12px; color: var(--navy); font-weight: 900; letter-spacing: -.04em; }
+    .brand-icon { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 16px; background: #fff; box-shadow: 0 8px 20px #16799a22; font-size: 25px; }
+    .brand small { display:block; color: var(--muted); font-size: 11px; letter-spacing: .14em; margin-bottom: 2px; }
+    .top-pill { border: 1px solid #ffffffb3; border-radius: 999px; padding: 9px 14px; color: var(--navy); background: #ffffff7d; font-size: 13px; font-weight: 800; }
+    .hero { text-align: center; margin: 25px auto 24px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; color: #08718a; background: #ffffffb8; font-size: 12px; font-weight: 900; }
+    h1 { margin: 14px 0 7px; color: var(--navy); font-size: clamp(30px, 6vw, 48px); letter-spacing: -.06em; line-height: 1.12; }
+    .hero p { margin: 0; color: #477284; font-size: 15px; }
+    .game { display: grid; grid-template-columns: 1fr 285px; gap: 18px; align-items: stretch; }
+    .panel { border: 1px solid #ffffffd9; border-radius: 26px; background: var(--card); box-shadow: 0 18px 55px #0b597b18; }
+    .main-panel { padding: clamp(20px, 4vw, 34px); min-height: 490px; display: flex; flex-direction: column; }
+    .stats { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .level { color: var(--blue); font-size: 13px; font-weight: 900; letter-spacing: .06em; }
+    .lives { display: flex; align-items: center; gap: 5px; padding: 8px 11px; border-radius: 999px; background: #fff0ed; color: #b64b43; font-weight: 900; font-size: 13px; }
+    .heart { font-size: 17px; transition: transform .2s; }
+    .heart.lost { opacity: .2; filter: grayscale(1); transform: scale(.8); }
+    .progress { display: flex; gap: 6px; margin: 18px 0 26px; }
+    .step { height: 6px; flex: 1; border-radius: 9px; background: #e1edf1; transition: background .25s; }
+    .step.done { background: var(--aqua); }
+    .step.current { background: var(--blue); }
+    .question-card { flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: center; padding: 4px 0 14px; }
+    .badge { align-self: center; padding: 6px 11px; border-radius: 999px; background: #e4f8f7; color: #087d83; font-size: 12px; font-weight: 900; }
+    .initials { margin: 20px 0 10px; color: var(--navy); font-size: clamp(44px, 9vw, 68px); letter-spacing: .15em; font-weight: 1000; line-height: 1; }
+    .prompt { margin: 0 auto; max-width: 520px; color: #557486; font-size: 15px; line-height: 1.65; }
+    .answer-row { display: flex; gap: 9px; margin-top: 20px; }
+    input { min-width: 0; flex: 1; height: 54px; border: 2px solid #d7e9ee; border-radius: 15px; padding: 0 16px; color: var(--navy); background: #fff; font: inherit; font-size: 16px; font-weight: 700; outline: none; transition: border .2s, box-shadow .2s; }
+    input:focus { border-color: #43b8c0; box-shadow: 0 0 0 4px #43b8c022; }
+    input::placeholder { color: #a3b9c3; font-weight: 500; }
+    button { border: 0; font: inherit; cursor: pointer; transition: transform .15s, filter .15s, opacity .15s; }
+    button:hover { filter: brightness(1.04); transform: translateY(-1px); }
+    button:active { transform: translateY(1px); }
+    .check { min-width: 104px; border-radius: 15px; padding: 0 20px; color: #fff; background: linear-gradient(135deg, #0a83a6, #086489); font-weight: 900; box-shadow: 0 7px 16px #0a77952e; }
+    .feedback { min-height: 30px; margin: 12px 0 0; text-align: center; font-size: 14px; font-weight: 800; }
+    .feedback.good { color: #07847a; }
+    .feedback.bad { color: #db6557; }
+    .feedback.info { color: #648293; }
+    .side-panel { padding: 24px 22px; display: flex; flex-direction: column; }
+    .side-title { margin: 0; color: var(--navy); font-size: 16px; letter-spacing: -.03em; }
+    .side-sub { margin: 5px 0 20px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .sea-art { display: grid; place-items: center; min-height: 135px; margin-bottom: 14px; border-radius: 20px; background: linear-gradient(180deg,#d7fbf6,#c6efff); font-size: 67px; position: relative; overflow: hidden; }
+    .sea-art::before, .sea-art::after { content:""; position:absolute; border-radius:50%; background:#fff8; animation: float 4s ease-in-out infinite; }
+    .sea-art::before { width: 11px; height: 11px; top: 22px; left: 20%; }
+    .sea-art::after { width: 7px; height: 7px; top: 50px; right: 23%; animation-delay: 1s; }
+    @keyframes float { 50% { transform: translateY(-10px); } }
+    .rule { display: flex; gap: 10px; align-items: flex-start; padding: 12px 0; border-top: 1px solid #e8f0f3; color: #567686; font-size: 13px; line-height: 1.5; }
+    .rule b { color: var(--navy); }
+    .rule-icon { flex: 0 0 27px; display: grid; place-items: center; width: 27px; height: 27px; border-radius: 9px; background: #eef9fb; }
+    .note { margin-top: auto; padding: 12px; border-radius: 14px; background: #f1fbfa; color: #43817e; font-size: 11px; line-height: 1.5; }
+    .overlay { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; padding: 20px; background: #073b59a6; backdrop-filter: blur(8px); }
+    .modal { width: min(440px, 100%); padding: 34px; border-radius: 28px; text-align: center; background: #fff; box-shadow: 0 22px 70px #032e464c; animation: pop .3s ease-out; }
+    @keyframes pop { from { opacity:0; transform: translateY(12px) scale(.97); } to { opacity:1; transform:none; } }
+    .modal-icon { font-size: 55px; }
+    .modal h2 { margin: 12px 0 8px; color: var(--navy); font-size: 26px; }
+    .modal p { margin: 0 0 22px; color: #638091; line-height: 1.7; }
+    .start { min-height: 50px; padding: 0 24px; border-radius: 15px; color: #fff; background: linear-gradient(135deg, #0b8bab, #086489); font-weight: 900; }
+    .hidden { display: none !important; }
+    footer { padding-top: 20px; text-align: center; color: #6492a1; font-size: 11px; }
+    @media (max-width: 720px) {
+      .shell { padding-top: 18px; }
+      .game { grid-template-columns: 1fr; }
+      .main-panel { min-height: 440px; }
+      .side-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+      .side-title, .side-sub, .note { grid-column: 1 / -1; }
+      .side-sub { margin-bottom: 12px; }
+      .sea-art { min-height: 115px; grid-row: span 3; }
+      .rule { padding: 9px 0; }
+      .note { margin-top: 12px; }
+    }
+    @media (max-width: 420px) {
+      .brand-icon { width: 40px; height: 40px; }
+      .top-pill { font-size: 11px; padding: 8px 10px; }
+      .main-panel { padding: 20px 17px; }
+      .answer-row { flex-direction: column; }
+      .check { min-height: 50px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+<div id="siaBar" style="position:sticky;top:0;z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:#0B7285;color:#fff;font:700 14px 'Noto Sans KR','Malgun Gothic',sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.25)">
+<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🌊 바다 놀이터</span>
+<span style="display:flex;gap:8px;flex:none">
+<button type="button" onclick="location.reload()" style="font:inherit;min-height:36px;padding:0 12px;border:1px solid rgba(255,255,255,.7);border-radius:10px;background:transparent;color:#fff;cursor:pointer">그만하고 처음으로</button>
+<button type="button" onclick="(function(){window.close();setTimeout(function(){location.href='/playground'},150)})()" style="font:inherit;min-height:36px;padding:0 12px;border:0;border-radius:10px;background:#fff;color:#0B7285;cursor:pointer">나가기 ✕</button>
+</span></div>
+
+  <div class="shell">
+    <header>
+      <div class="brand"><div class="brand-icon">🐬</div><div><small>OCEAN WORD ADVENTURE</small>바닷속 초성 탐험대</div></div>
+      <div class="top-pill">🌊 해양생물 초성 퀴즈</div>
+    </header>
+    <section class="hero">
+      <div class="eyebrow">🐚 열 문제로 완성하는 바다 탐험</div>
+      <h1>초성을 풀고 바다를 구해요!</h1>
+      <p>쉬운 바다 친구부터 신기한 해양 과학 용어까지 만나 보세요.</p>
+    </section>
+    <main class="game">
+      <section class="panel main-panel" aria-label="퀴즈">
+        <div class="stats"><div class="level" id="level">LEVEL 01 / 10</div><div class="lives" aria-label="남은 목숨"><span>남은 목숨</span><span id="hearts"></span><span id="life-count">10</span></div></div>
+        <div class="progress" id="progress" aria-label="진행 상황"></div>
+        <div class="question-card" id="question-card">
+          <div class="badge" id="difficulty">바다 친구</div>
+          <div class="initials" id="initials">ㄱㄹ</div>
+          <p class="prompt" id="prompt"></p>
+        </div>
+        <form class="answer-row" id="answer-form">
+          <input id="answer" type="text" autocomplete="off" placeholder="정답을 입력해 보세요" aria-label="정답 입력" required>
+          <button class="check" type="submit">정답 확인</button>
+        </form>
+        <p class="feedback info" id="feedback" aria-live="polite">초성에 맞는 해양생물 또는 용어를 입력해 보세요.</p>
+      </section>
+      <aside class="panel side-panel">
+        <h2 class="side-title">탐험 규칙</h2>
+        <p class="side-sub">차근차근 생각하면 바다 지식이 쑥쑥!</p>
+        <div class="sea-art" aria-hidden="true">🐠</div>
+        <div>
+          <div class="rule"><span class="rule-icon">🔎</span><span>초성을 보고 <b>정답 한 단어</b>를 입력해요.</span></div>
+          <div class="rule"><span class="rule-icon">💙</span><span>처음 목숨은 <b>10개</b>, 틀릴 때마다 하나 줄어요.</span></div>
+          <div class="rule"><span class="rule-icon">🏁</span><span>10단계를 모두 풀면 <b>탐험 성공!</b></span></div>
+        </div>
+        <div class="note">정답을 맞히면 다음 단계로 이동해요. 오답이어도 같은 문제에 다시 도전할 수 있어요.</div>
+      </aside>
+    </main>
+    <footer>작은 호기심이 바다를 지키는 첫걸음이에요 · 바닷속 초성 탐험대</footer>
+  </div>
+  <div class="overlay" id="overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-icon" id="modal-icon">🫧</div>
+      <h2 id="modal-title">바다 탐험을 시작할까요?</h2>
+      <p id="modal-copy">초성으로 해양생물과 바다 용어를 맞혀 보세요.<br>목숨 10개로 10단계에 도전합니다!</p>
+      <button class="start" id="start-button">탐험 시작하기</button>
+    </div>
+  </div>
+  <script>
+    const questions = [
+      { initials: "ㄱㄹ", level: "바다 친구", clue: "바다에 사는 아주 큰 포유류예요. 물 위로 올라와 숨을 쉬고, 노래하는 종류도 있어요.", answers: ["고래"], fact: "고래는 물고기가 아니라 새끼를 낳고 젖을 먹이는 포유류예요." },
+      { initials: "ㅁㅇ", level: "바다 친구", clue: "다리가 여덟 개이고, 먹물을 뿜어 위험을 피하는 연체동물이에요.", answers: ["문어"], fact: "문어의 다리에는 맛을 느끼는 감각도 있어요." },
+      { initials: "ㅅㅎ", level: "바닷속 보금자리", clue: "작은 동물들이 모여 단단한 구조를 만들어요. 많은 물고기가 이곳을 집으로 삼아요.", answers: ["산호"], fact: "산호초는 다양한 바다 생물에게 먹이와 숨을 곳을 제공해요." },
+      { initials: "ㅍㄹㅋㅌ", level: "작은 바다 생물", clue: "물속을 떠다니며 살아가는 아주 작은 생물 무리예요. 바다 먹이사슬의 중요한 바탕이에요.", answers: ["플랑크톤"], fact: "플랑크톤에는 식물처럼 햇빛으로 양분을 만드는 식물플랑크톤도 있어요." },
+      { initials: "ㅁㅇㅅㅅ", level: "생태계 연결고리", clue: "누가 누구를 먹는지 순서대로 이어 놓은 관계예요. 바다 생태계의 에너지 흐름을 보여 줘요.", answers: ["먹이사슬"], fact: "생물은 여러 관계로 얽혀 있어 먹이그물이라는 더 복잡한 모습도 만들어져요." },
+      { initials: "ㅇㄱㅁ", level: "몸속의 바다 장치", clue: "물속에 녹아 있는 산소를 받아 숨 쉴 수 있게 해 주는 물고기의 기관이에요.", answers: ["아가미"], fact: "아가미는 물이 지나갈 때 산소를 몸속으로 옮겨요." },
+      { initials: "ㄱㅅ", level: "생물 사이의 관계", clue: "서로 다른 생물 두 종류가 가까이 함께 살아가는 관계를 말해요. 서로 돕는 경우가 대표적이에요.", answers: ["공생"], fact: "공생에는 양쪽이 이익을 얻는 관계도 있고, 한쪽만 이익을 얻는 관계도 있어요." },
+      { initials: "ㅂㅇㅅㅁ", level: "해양 생태 용어", clue: "물속을 헤엄쳐 이동하기보다 물의 흐름에 따라 떠다니는 생물을 통틀어 부르는 말이에요.", answers: ["부유생물"], fact: "부유생물에는 플랑크톤과 작은 해파리처럼 떠다니는 생물이 포함돼요." },
+      { initials: "ㅇㅅ", level: "해양 현상", clue: "바람과 바닷물의 움직임 때문에 깊고 차가운 바닷물이 표층으로 올라오는 현상이에요. 영양염이 풍부해 어장이 발달하기도 해요.", answers: ["용승"], fact: "용승 해역은 표층에 영양분을 공급해 식물플랑크톤이 늘어나는 데 도움을 줘요." },
+      { initials: "ㅅㅁㅂㄱ", level: "전문가 도전", clue: "생물이 몸속 화학 반응으로 스스로 빛을 만들어 내는 현상이에요. 심해 생물이나 반딧불오징어에서 볼 수 있어요.", answers: ["생물발광"], fact: "생물발광은 먹이를 유인하거나 짝을 찾고 포식자를 피하는 데 쓰일 수 있어요." }
+    ];
+    let current = 0;
+    let lives = 10;
+    let locked = false;
+    const $ = (id) => document.getElementById(id);
+    const normalize = (value) => value.toLowerCase().replace(/[\s·ㆍ.,!?-]/g, "");
+
+    function render() {
+      const q = questions[current];
+      $("level").textContent = `LEVEL ${String(current + 1).padStart(2, "0")} / 10`;
+      $("difficulty").textContent = q.level;
+      $("initials").textContent = q.initials;
+      $("prompt").textContent = q.clue;
+      $("life-count").textContent = lives;
+      $("hearts").innerHTML = Array.from({ length: 10 }, (_, i) => `<span class="heart ${i >= lives ? "lost" : ""}">♥</span>`).join("");
+      $("progress").innerHTML = questions.map((_, i) => `<span class="step ${i < current ? "done" : i === current ? "current" : ""}"></span>`).join("");
+      $("answer").value = "";
+      $("answer").disabled = false;
+      document.querySelector(".check").disabled = false;
+      $("feedback").className = "feedback info";
+      $("feedback").textContent = "초성에 맞는 해양생물 또는 용어를 입력해 보세요.";
+      $("answer").focus({ preventScroll: true });
+    }
+
+    function finish(won) {
+      locked = true;
+      $("modal-icon").textContent = won ? "🏆" : "🐬";
+      $("modal-title").textContent = won ? "바다 탐험 성공!" : "다시 도전해 볼까요?";
+      $("modal-copy").innerHTML = won
+        ? `10단계를 모두 풀었어요!<br>바다 지식이 한층 자랐네요.`
+        : `목숨이 모두 사라졌어요.<br>이번에도 ${current + 1}단계까지 왔어요. 다시 도전해 봐요!`;
+      $("start-button").textContent = "처음부터 다시하기";
+      $("overlay").classList.remove("hidden");
+    }
+
+    $("answer-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (locked) return;
+      const typed = normalize($("answer").value);
+      if (!typed) return;
+      const q = questions[current];
+      if (q.answers.some(answer => normalize(answer) === typed)) {
+        locked = true;
+        $("answer").disabled = true;
+        document.querySelector(".check").disabled = true;
+        $("feedback").className = "feedback good";
+        $("feedback").textContent = `정답이에요! ${q.fact}`;
+        $("progress").children[current].classList.add("done");
+        window.setTimeout(() => {
+          if (current === questions.length - 1) finish(true);
+          else { current += 1; locked = false; render(); }
+        }, 1700);
+      } else {
+        lives -= 1;
+        $("life-count").textContent = lives;
+        $("hearts").children[lives].classList.add("lost");
+        $("feedback").className = "feedback bad";
+        $("feedback").textContent = lives > 0 ? "앗, 정답이 아니에요. 목숨이 하나 줄었어요. 다시 생각해 볼까요?" : "목숨을 모두 사용했어요.";
+        $("answer").value = "";
+        if (lives <= 0) window.setTimeout(() => finish(false), 800);
+        else $("answer").focus();
+      }
+    });
+
+    $("start-button").addEventListener("click", () => {
+      current = 0; lives = 10; locked = false;
+      $("overlay").classList.add("hidden");
+      $("start-button").textContent = "탐험 시작하기";
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>
