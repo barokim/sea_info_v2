@@ -1,0 +1,7 @@
+/* 1단계 와이어프레임 시안: 색을 빼고 '어디에 무엇이 있는지'만 보여줘요. */
+.stApp{filter:grayscale(1)}
+.sia-photo{background:repeating-linear-gradient(45deg,#F1F1F1,#F1F1F1 10px,#E4E4E4 10px,#E4E4E4 20px)!important;border:1.5px dashed #9A9A9A}
+.sia-photo span{opacity:.18}
+.sia-hero{background:#E9E9E9!important;color:#333!important;border:1.5px dashed #9A9A9A}
+.sia-hero h2{color:#333!important}
+.sia-celebrate{background:#F1F1F1!important}

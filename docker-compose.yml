@@ -1,0 +1,17 @@
+# Redis를 Docker로 켜요 (강사님 기준: Docker는 실행 위주).
+#   켜기:  docker compose up -d
+#   끄기:  docker compose down        (데이터는 redis-data 볼륨에 남아요)
+#   확인:  docker compose exec redis redis-cli ping   → PONG
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: sea-info-redis
+    command: ["redis-server", "--appendonly", "yes"]   # 꺼졌다 켜져도 값이 남게 디스크에 저장
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:

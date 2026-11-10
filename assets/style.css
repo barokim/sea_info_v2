@@ -1,0 +1,110 @@
+/* Sea-Info Agent 공통 CSS (편성훈). 색은 7장 톤앤매너 값만 써요. */
+/* 위쪽 머리 영역(높이 60px)에 상단 바가 가리지 않게 4rem 띄워요 */
+[data-testid="stMainBlockContainer"]{max-width:1200px;padding-top:4rem;padding-bottom:4rem}
+@media (max-width:640px){[data-testid="stMainBlockContainer"]{padding-left:1rem;padding-right:1rem;padding-top:4rem}}
+/* 태블릿 · 작은 노트북: 왼쪽 메뉴가 300px를 차지하니 본문 좌우 여백을 줄여요 */
+@media (min-width:641px) and (max-width:1100px){[data-testid="stMainBlockContainer"]{padding-left:1.5rem;padding-right:1.5rem}}
+
+/* 제목 */
+.sia-head{margin:.25rem 0 .5rem}
+h1.sia-title{font-size:28px;font-weight:700;line-height:1.3;margin:0;padding:0;color:#12344D}
+p.sia-desc{color:#4A6274;font-size:15px;margin:.35rem 0 0}
+h2.sia-h2{font-size:20px;font-weight:700;margin:0;padding:0;color:#12344D}
+@media (max-width:640px){h1.sia-title{font-size:24px} h2.sia-h2{font-size:18px}}
+.sia-muted{color:#4A6274;font-size:14px;line-height:1.6;margin:0 0 .15rem;padding-bottom:2px}
+
+/* 버튼 · 링크: 손가락으로 누르기 쉽게 44px */
+.stButton button,.stFormSubmitButton button,.stDownloadButton button,.stLinkButton a{min-height:44px;font-weight:600}
+[data-testid="stPageLink"] a{min-height:40px}
+
+/* 사진 자리 타일 */
+.sia-photo{border-radius:14px;display:flex;align-items:center;justify-content:center;width:100%;position:relative;overflow:hidden}
+.sia-photo span{line-height:1;filter:drop-shadow(0 4px 6px rgba(18,52,77,.15))}
+.sia-photo-cap{position:absolute;left:10px;bottom:8px;font-style:normal;font-size:12px;color:#12344D;background:rgba(255,255,255,.8);padding:1px 8px;border-radius:999px}
+.t-aqua{background:linear-gradient(135deg,#D6F1F3,#8ED3DC)}
+.t-sand{background:linear-gradient(135deg,#FFF3DC,#F2D29B)}
+.t-coral{background:linear-gradient(135deg,#FFE6DD,#F6B5A2)}
+.t-violet{background:linear-gradient(135deg,#ECE6F8,#C3B4E8)}
+.t-navy{background:linear-gradient(135deg,#C9D9EA,#7E9DC0)}
+
+/* 꼬리표 */
+.sia-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.sia-chip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;line-height:1.5;padding:2px 10px;border-radius:999px;background:#EAF6F7;color:#12344D;border:1px solid #D3E4E8;white-space:nowrap}
+.sia-chip.demo{background:#FFF6E5;border-color:#F2D29B;color:#8A5A00}
+.sia-chip.ok{background:#E6F5EC;border-color:transparent;color:#1F7A4D}
+.sia-chip.warn{background:#FFF4D6;border-color:transparent;color:#8A5A00}
+.sia-chip.danger{background:#FDECEA;border-color:transparent;color:#B42318}
+.sia-chip.coral{background:#FFF1EC;border-color:transparent;color:#B8432A}
+.sia-chip.sea{background:#0B7285;border-color:transparent;color:#FFFFFF}
+
+/* 빈 상태 */
+.sia-empty{text-align:center;padding:.5rem 0}
+.sia-empty .ic{font-size:40px;line-height:1.2}
+.sia-empty p{color:#4A6274;margin:.4rem 0 0}
+
+/* 메인 배너 (홈) */
+.sia-hero{border-radius:18px;padding:28px 26px;background:linear-gradient(120deg,#0B4F6C,#0B7285 55%,#1792A3);color:#FFFFFF}
+.sia-hero .eyebrow{font-size:12px;letter-spacing:.12em;opacity:.85}
+.sia-hero h2{font-size:28px;font-weight:700;margin:.35rem 0 .3rem;color:#FFFFFF;padding:0}
+.sia-hero p{margin:0;opacity:.92}
+@media (max-width:640px){.sia-hero{padding:22px 18px}.sia-hero h2{font-size:24px}}
+
+/* 축하 팝업 */
+.sia-celebrate{text-align:center;background:#FFF6E5;border-radius:14px;padding:18px 12px 14px}
+.sia-celebrate .big{font-size:44px;line-height:1}
+.sia-celebrate h3{font-size:20px;margin:.4rem 0 .2rem;padding:0}
+
+/* 상단 바 */
+.st-key-sia_topbar{padding-bottom:.25rem;border-bottom:1px solid #D3E4E8;margin-bottom:.5rem}
+
+/* 작은 사진 + 글 한 줄 */
+.sia-item{display:flex;gap:12px;align-items:center}
+.sia-item .sia-photo{border-radius:10px}
+.sia-item .sia-muted{color:#4A6274;font-size:14px}
+
+/* Streamlit 1.67은 글 블록마다 아래 여백을 -1rem 줘요. 우리 HTML 블록에는 그만큼 되돌려요 */
+[data-testid="stMarkdownContainer"]:has(> .sia-item, > .sia-muted, > .sia-chips, > .sia-head, > .sia-empty, > .sia-celebrate, > .sia-photo){margin-bottom:0}
+
+/* 로그인 쿠키를 쓰는 보이지 않는 칸 */
+.st-key-sia_cookie{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+
+/* ---------- 사진 올리기: 영어 문구를 한국어로, 버튼끼리 붙지 않게 ---------- */
+[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p{font-size:0;line-height:0}
+[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after{content:"사진 올리기";font-size:15px;line-height:1.4}
+[data-testid="stFileUploaderDropzone"] button{min-height:44px;padding:.5rem 1.1rem}
+[data-testid="stFileUploaderDropzoneInstructions"]{display:none}
+[data-testid="stFileUploaderFile"]{gap:.75rem}
+div:has(> button[data-variant="pills"]){gap:.5rem}
+.st-key-identify_preview img{max-height:340px;object-fit:contain;border-radius:14px;background:#EAF6F8}
+@media (max-width:640px){
+  [data-testid="stFileUploaderDropzone"] button{width:100%}
+}
+
+/* ---------- 홈 배너: 버튼을 배너 안에, 3단계 안내는 띠로 ---------- */
+.st-key-home_hero{background:linear-gradient(120deg,#0B4F6C,#0B7285 55%,#1792A3);border-radius:18px;padding:28px 26px}
+.st-key-home_hero [data-testid="stMarkdownContainer"]{margin-bottom:0}
+.st-key-home_hero .eyebrow{font-size:12px;letter-spacing:.12em;color:#FFFFFF;opacity:.85}
+.st-key-home_hero h2{font-size:28px;font-weight:700;margin:.35rem 0 .3rem;color:#FFFFFF;padding:0}
+.st-key-home_hero p{margin:0;color:#FFFFFF;opacity:.92}
+.st-key-home_hero button[kind="primary"]{background:#FFFFFF;border-color:#FFFFFF;min-height:46px;padding:.55rem 1.25rem}
+.st-key-home_hero button[kind="primary"] *{color:#0B4F6C;font-weight:700}
+.st-key-home_hero button[kind="primary"]:hover{background:#E3F4F6;border-color:#E3F4F6}
+.st-key-home_hero button[kind="primary"]:focus-visible{outline:3px solid #FFD166;outline-offset:2px}
+.sia-hero-chip{display:inline-block;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.16);color:#FFFFFF;font-size:13px;font-weight:500}
+.sia-steps{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;background:#F3FAFB;border:1px solid #D3E4E8;border-radius:14px;padding:12px 16px;margin-top:.25rem}
+.sia-steps .step{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:#12344D}
+.sia-steps .n{width:22px;height:22px;border-radius:50%;background:#0B7285;color:#FFFFFF;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.sia-steps .arr{color:#7F9AA5;font-size:18px;line-height:1}
+[data-testid="stMarkdownContainer"]:has(> .sia-steps){margin-bottom:0}
+.st-key-home_try [data-testid="stHorizontalBlock"], .st-key-home_try > div:last-child{gap:.6rem}
+@media (max-width:640px){
+  .st-key-home_hero{padding:22px 18px}
+  .st-key-home_hero h2{font-size:24px}
+  .st-key-home_identify{flex:1 1 100% !important;width:100% !important}
+  .st-key-home_identify .stButton, .st-key-home_identify button{width:100%}
+}
+@media (max-width:1100px){
+  .sia-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:12px 8px;text-align:center}
+  .sia-steps .arr{display:none}
+  .sia-steps .step{flex-direction:column;gap:5px;font-size:13px}
+}
