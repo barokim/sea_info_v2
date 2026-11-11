@@ -2,7 +2,7 @@
 
 로컬 모드의 인증 링크 · 제보 알림 · 답변 알림 메일을 보내요.
 SMTP_USER · SMTP_PASSWORD(Gmail 앱 비밀번호)가 없으면 '개발 모드':
-메일을 실제로 보내지 않고 서버 터미널에 내용을 찍고, Redis 'dev:mails'에 남겨요.
+메일을 실제로 보내지 않고 로컬 개발 모드에서만 Redis 'dev:mails'에 남겨요.
 """
 from __future__ import annotations
 
@@ -23,8 +23,12 @@ def send(to: str, subject: str, body: str) -> dict:
     if not to:
         return {"sent": False, "dev": False}
     if not s.smtp_on:
-        log.warning("[개발 모드 메일] 받는 사람=%s 제목=%s\n%s", to, subject, body)
-        print(f"\n[개발 모드 메일] → {to}\n제목: {subject}\n{body}\n", flush=True)
+        # [BARO-SCOPE-EXTENSION] 주요 5개 파일 밖의 승인된 연관 수정.
+        # 변경 이유: inquiries.py의 메일 오류 처리와 연결되는 공통 메일 로그에서 개인정보를 제거한다.
+        # [BARO-CHANGE-023] 메일 주소·코드·링크·본문을 로그에 출력하지 않고 운영 모드는 개발 보관도 하지 않는다.
+        log.warning("SMTP 미설정으로 실제 메일을 발송하지 않았습니다.")
+        if not s.is_local:
+            return {"sent": False, "dev": False}
         redis_store.dev_mail_push({"to": to, "subject": subject, "body": body, "at": now().isoformat(timespec="seconds")})
         return {"sent": False, "dev": True}
     msg = EmailMessage()

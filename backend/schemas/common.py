@@ -144,6 +144,24 @@ class TideOut(BaseModel):
     wave: str
     updated: str
     source: str = "예시 데이터"
+    # [BARO-SCOPE-EXTENSION] 주요 5개 파일 밖의 승인된 연관 수정.
+    # 변경 이유: tide.py의 실제 예보 대상과 미조회 지역 목록을 tide_card.py에 전달한다.
+    # [BARO-CHANGE-010] 기존 필드는 유지하고 기본값이 있는 메타데이터 필드를 추가한다.
+    available: bool = True
+    data_kind: str = "example"  # example | forecast
+    target_date: str = ""  # YYYY-MM-DD, 갱신시각과 구별
+    station_id: str = ""
+    station_name: str = ""
+    # [BARO-SCOPE-EXTENSION] 허용된 응답 스키마 파일에 실측 필드를 추가한다.
+    # [BARO-CHANGE-045] 기존 고·저조 예보 필드는 그대로 두고 실측값을 별도 상태·출처·시각으로 전달한다.
+    observation_status: Literal["ok", "stale", "empty", "unavailable", "not_configured", "error"] = "not_configured"
+    observation_message: str = ""
+    observation_level_cm: Optional[float] = None
+    observation_water_temp_c: Optional[float] = None
+    observation_time: str = ""
+    observation_station_id: str = ""
+    observation_station_name: str = ""
+    observation_source: str = ""
 
 
 class ObservationOut(BaseModel):
