@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import Lock
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -14,7 +16,7 @@ from backend.core import gemini
 from backend.core.convert import news_out
 from backend.core.security import require_admin
 from backend.core.timefmt import as_kst, today
-from backend.db import get_session, new_id
+from backend.db import engine, get_session, new_id
 from backend.models import AdminLog, News, NewsRun, NewsSource, QuizQuestion, User
 from backend.routers.games import quiz_out
 from backend.routers.news import forget_top
@@ -25,6 +27,9 @@ from backend.schemas.news import (AdminNewsOut, CollectIn, CollectOut, FailedSou
 router = APIRouter(prefix="/admin", tags=["관리자 · 콘텐츠"])
 SCREEN = "콘텐츠 관리"
 EDIT_ACTION = "소식 고치기"
+_collect_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="news-collect")
+_collect_lock = Lock()
+_collect_future: Future | None = None
 
 
 def _log(session: Session, admin: User, action: str, target: str = "", before=None, after=None, reason: str = "") -> None:
@@ -217,6 +222,46 @@ def sources_save(body: list[SourceIn], admin: User = Depends(require_admin), ses
 
 
 # ---------- 수집 기록 · 다시 수집 ----------
+def _collect_in_background(actor: str) -> dict:
+    """요청 세션과 분리해 수집하고 결과를 저장한다."""
+    with Session(engine) as session:
+        try:
+            with news_collector.collection_lock(session):
+                out = news_collector.collect(session, max_items=news_collector.MAX_ITEMS)
+                session.add(AdminLog(screen=SCREEN, actor=actor, action="지금 수집", target="사용 중인 출처 모두",
+                                     after=json.dumps({"ok": out["ok"], "fail": out["fail"], "failed": out["failed"]},
+                                                      ensure_ascii=False, default=str)[:1000]))
+                session.commit()
+            if out["ok"]:
+                forget_top()
+            return {"state": "done", "ok": out["ok"], "fail": out["fail"], "run_id": out["run"].id}
+        except Exception:
+            session.rollback()
+            print("[전체 뉴스 수집 오류] 저장하지 못했습니다.", flush=True)
+            return {"state": "error", "message": "수집 결과를 저장하지 못했어요. 서버 로그를 확인해 주세요."}
+
+
+@router.post("/news/collect/start", summary="전체 출처 수집을 백그라운드에서 시작")
+def collect_start(admin: User = Depends(require_admin)):
+    global _collect_future
+    with _collect_lock:
+        if _collect_future is not None and not _collect_future.done():
+            return {"state": "running", "started": False}
+        _collect_future = _collect_pool.submit(_collect_in_background, admin.nickname)
+    return {"state": "running", "started": True}
+
+
+@router.get("/news/collect/status", summary="전체 출처 수집 진행 상태")
+def collect_status(admin: User = Depends(require_admin)):
+    with _collect_lock:
+        future = _collect_future
+    if future is None:
+        return {"state": "idle"}
+    if not future.done():
+        return {"state": "running"}
+    return future.result()
+
+
 @router.get("/news/runs", response_model=list[RunOut], summary="수집 기록 (최신순)")
 def runs(admin: User = Depends(require_admin), session: Session = Depends(get_session)):
     rows = sorted(session.exec(select(NewsRun)).all(), key=lambda r: (r.date, r.id or 0), reverse=True)
@@ -229,15 +274,16 @@ def collect(body: CollectIn | None = None, admin: User = Depends(require_admin),
     if names is not None and not [n for n in names if n.strip()]:
         raise HTTPException(422, "다시 모을 출처를 골라 주세요.")
     try:
-        out = news_collector.collect(session, names, max_items=5 if names else news_collector.MAX_ITEMS)
+        with news_collector.collection_lock(session):
+            out = news_collector.collect(session, names, max_items=5 if names else news_collector.MAX_ITEMS)
+            target = ", ".join(names) if names else "사용 중인 출처 모두"
+            _log(session, admin, "다시 수집" if names else "지금 수집", target,
+                 after={"ok": out["ok"], "fail": out["fail"], "failed": out["failed"]})
+            _commit(session, "수집 결과를 저장")
     except Exception as e:  # collect는 출처별로 실패를 기록하지만, DB 문제 같은 것은 여기서 막아요
         session.rollback()
         print(f"[수집 오류] {e}", flush=True)
         raise HTTPException(500, "수집하지 못했어요. 이전 소식은 그대로예요. 잠시 뒤 다시 시도해 주세요.")
-    target = ", ".join(names) if names else "사용 중인 출처 모두"
-    _log(session, admin, "다시 수집" if names else "지금 수집", target,
-         after={"ok": out["ok"], "fail": out["fail"], "failed": out["failed"]})
-    _commit(session, "수집 결과를 저장")
     if out["ok"]:
         forget_top()
     session.refresh(out["run"])
