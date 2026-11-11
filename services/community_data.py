@@ -217,6 +217,19 @@ def report(pid: str, reason: str, detail: str = "") -> str:
     return _changed(_call("POST", f"/posts/{pid}/report", json={"reason": reason, "detail": detail or ""}))["message"]
 
 
+def report_details(post_id: str | None = None, *, limit: int = 50, offset: int = 0) -> list[dict]:
+    """관리자만: 신고 설명 목록. 신고 관리 화면에서 연결해 사용할 수 있어요."""
+    params = {"limit": limit, "offset": offset}
+    if post_id is not None:
+        params["post_id"] = post_id
+    return _call("GET", "/admin/community/report-details", params=params)
+
+
+def report_detail(report_id: int) -> dict:
+    """관리자만: 신고 ID로 기타 설명을 포함한 한 건 조회."""
+    return _call("GET", f"/admin/community/reports/{report_id}/detail")
+
+
 # ---------- 게시판 관리 (A-02) ----------
 BOARD_ERR_KEYS = {"id": "slug", "search_fields": "search", "rules.interval": "interval", "pin_notice": "pin"}
 

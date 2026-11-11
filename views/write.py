@@ -31,7 +31,17 @@ edit_id = st.query_params.get("edit")
 qp_board = st.query_params.get("board")
 
 
+def photo_key() -> str:
+    return f"write_photo_{S.get('_write_photo_version', 0)}"
+
+
+def selected_photo():
+    return S.get(photo_key())
+
+
 def reset() -> None:
+    # 업로더는 값을 직접 비울 수 없어 새 key로 다시 만들어요.
+    S["_write_photo_version"] = S.get("_write_photo_version", 0) + 1
     for k in TEXT_KEYS + ("write_errors", "write_cancel"):
         S.pop(k, None)
     for b in db.boards(active_only=False):
@@ -67,14 +77,14 @@ def check(b: dict) -> dict:
     if not body:
         errs["body"] = "내용이 비어 있어요. 2,000자까지 쓸 수 있어요."
     errs.update(fields.validate(b.get("fields"), fields.read(b.get("fields"), FP)))
-    if S.get("write_photo") and not S.get("write_consent"):
+    if selected_photo() and not S.get("write_consent"):
         errs["photo"] = "사진을 올리려면 바로 위 동의에 체크해 주세요."
     return errs
 
 
 def photo_id() -> str | None:
     """고른 사진을 서버에 맡겨요. 같은 사진이면 다시 올리지 않아요."""
-    photo = S.get("write_photo")
+    photo = selected_photo()
     if not photo:
         return None
     done = S.get("write_photo_id")
@@ -87,25 +97,32 @@ def photo_id() -> str | None:
 
 def submit(bid: str, pid: str | None) -> None:
     b = db.board(bid)
-    if S.get("write_photo") and not S.get("write_consent"):  # 동의 없는 사진은 서버에 보내지 않아요
+    if selected_photo() and not S.get("write_consent"):  # 동의 없는 사진은 서버에 보내지 않아요
         S["write_errors"] = check(b)
         return
     title, body = S.get("write_title") or "", S.get("write_body") or ""
     extra = fields.to_store(b.get("fields"), fields.read(b.get("fields"), FP))
-    try:
-        ph = photo_id()
-        if pid:
-            cd.update_post(pid, title, body, extra, ph, bool(S.get("write_consent")))
-            S["community_toast"] = "고친 내용을 저장했어요"
-        else:
-            pid = cd.create_post(bid, title, body, extra, ph, bool(S.get("write_consent")))
-            S["community_toast"] = "글을 올렸어요"
-    except cd.Problem as e:
-        S["write_errors"] = cd.write_errors(e)
-        return
-    except ApiError as e:
-        S["write_errors"] = {"_other": e.message}
-        return
+    for attempt in range(2):
+        try:
+            ph = photo_id()
+            if pid:
+                cd.update_post(pid, title, body, extra, ph, bool(S.get("write_consent")))
+                S["community_toast"] = "고친 내용을 저장했어요"
+            else:
+                pid = cd.create_post(bid, title, body, extra, ph, bool(S.get("write_consent")))
+                S["community_toast"] = "글을 올렸어요"
+            break
+        except cd.Problem as e:
+            if e.code == "photo_expired":
+                S.pop("write_photo_id", None)
+                if attempt == 0 and selected_photo():
+                    # 서버가 저장 전에 만료를 확인했을 때만, 고른 사진을 한 번 다시 올려요.
+                    continue
+            S["write_errors"] = cd.write_errors(e)
+            return
+        except ApiError as e:
+            S["write_errors"] = {"_other": e.message}
+            return
     reset()
     S["write_new_post"] = pid
 
@@ -124,7 +141,7 @@ def server_errors(bid: str) -> dict:
 
 
 def ask_cancel(bid: str, pid: str | None) -> None:
-    typed = any((S.get(k) or "") for k in ("write_title", "write_body")) or S.get("write_photo")
+    typed = any((S.get(k) or "") for k in ("write_title", "write_body")) or selected_photo()
     if typed:
         S["write_cancel"] = True
     else:  # 쓴 게 없으면 묻지 않고 돌아가요
@@ -190,7 +207,8 @@ if edit_id:
             S[f"{FP}_{f['key']}"] = fields._date(v) if f["type"] == "date" else v
     ui.page_header("글 고치기", "고친 내용은 저장하면 바로 보여요.")
 else:
-    S.pop("_write_edit_loaded", None)
+    if S.pop("_write_edit_loaded", None) is not None:
+        reset()
     options = cd.writable_boards(user)
     ids = [b["id"] for b in options]
     ui.page_header("글쓰기", "궁금한 것, 나누고 싶은 바다 이야기를 남겨요.")
@@ -233,7 +251,7 @@ with left:
             st.markdown(f"**{board['name']} 추가 항목**")
             fields.render(board.get("fields"), FP, errors=errs)
         if cd.can(user, board["perm"]["photo"]):
-            st.file_uploader("사진 1장 (선택)", type=db.settings()["formats"], key="write_photo",
+            st.file_uploader("사진 1장 (선택)", type=db.settings()["formats"], key=photo_key(),
                              max_upload_size=int(db.settings()["max_mb"]),
                              help=f"JPG · PNG, {db.settings()['max_mb']}MB까지. 스마트폰에서는 사진 찍기나 앨범을 고를 수 있어요.")
             st.checkbox("사진을 사이트에서 보여줘도 괜찮아요 (사진을 올릴 때 필수)", key="write_consent",
