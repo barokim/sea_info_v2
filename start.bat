@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 set PYTHONUTF8=1
-if "%API_PORT%"=="" set API_PORT=8000
+if "%API_PORT%"=="" set API_PORT=8002
 if "%WEB_PORT%"=="" set WEB_PORT=8501
 
 echo.
