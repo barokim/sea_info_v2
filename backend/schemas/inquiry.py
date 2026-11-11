@@ -65,6 +65,10 @@ class InquiryCreated(BaseModel):
     id: str = Field(description="접수번호 (예: R-1108-K3F9)")
     jira_status: str = Field(description="off(미연결) | created | failed")
     jira_key: str = ""
+    # [BARO-SCOPE-EXTENSION] 주요 5개 파일 밖의 승인된 연관 수정.
+    # 변경 이유: inquiries.py의 저장 성공·후속 연동 확인 불가를 report.py에 전달한다.
+    # [BARO-CHANGE-022] 기존 응답에 선택적 안내를 추가하여 구버전 호출부와 호환한다.
+    message: str = ""
 
 
 class InquiryOut(BaseModel):
