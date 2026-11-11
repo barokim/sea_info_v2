@@ -22,7 +22,14 @@ from backend.schemas.common import NewsOut
 from backend.schemas.news import LastRunOut, NewsViewOut
 
 router = APIRouter(tags=["바다 소식"])
-TOP_CACHE = "news:top_ids"  # 많이 읽은 순서 (1시간 보관)
+TOP_CACHE = "news:top_ids:v2"  # 많이 읽은 순서 (1시간 보관)
+
+
+def _is_example_out(item: NewsOut) -> bool:
+    """초기 시연용 예시 기사 여부를 판별한다."""
+    url = item.url or ""
+    src = item.source or ""
+    return url.startswith(("https://example.com/", "http://example.com/")) or src.startswith("예시 ")
 
 
 def _public(session: Session) -> list[NewsOut]:
@@ -33,6 +40,7 @@ def forget_top() -> None:
     """소식을 숨기거나 새로 넣은 뒤 ‘많이 읽은 소식’ 순서를 다시 매기게 해요."""
     try:
         redis_store.r().delete(f"cache:{TOP_CACHE}")
+        redis_store.r().delete("cache:news:top_ids")
     except Exception:
         pass
 
@@ -44,25 +52,43 @@ def news_list(session: Session = Depends(get_session)):
 
 @router.get("/news/latest", response_model=list[NewsOut], summary="최신 소식 n개")
 def latest(n: int = 3, session: Session = Depends(get_session)):
-    return sorted(_public(session), key=lambda x: x.date, reverse=True)[:n]
+    rows = _public(session)
+    real_rows = [x for x in rows if not _is_example_out(x)] or rows
+    return sorted(real_rows, key=lambda x: x.date, reverse=True)[:n]
 
 
 @router.get("/news/top", response_model=list[NewsOut], summary="많이 읽은 소식 n개 (최근 30일 · 1시간마다 순서 갱신)")
 def top(n: int = 5, session: Session = Depends(get_session)):
-    rows = _public(session)
+    all_rows = _public(session)
+    # 실제 수집된 소식이 있으면 예시 기사를 제외하고 우선 노출
+    real_rows = [x for x in all_rows if not _is_example_out(x)]
+    rows = real_rows if real_rows else all_rows
+    if not rows:
+        return []
+
     since = f"{today() - timedelta(days=30):%Y-%m-%d}"
-    recent = [x for x in rows if x.date >= since] or rows  # 30일 안의 소식이 없으면 전체에서 골라요
-    by_id = {x.id: x for x in recent}
+    recent = [x for x in rows if x.date >= since]
+    # 최근 30일 소식이 n개보다 적으면 전체 보유 기사에서 보충해 빈칸이 생기지 않게 처리
+    pool = recent if len(recent) >= n else rows
+    by_id = {x.id: x for x in rows}
+
+    # 조회수 높은 순 -> 최신 날짜 순 -> ID 순으로 정렬 (조회수가 0이어도 일관되게 채워짐)
+    sorted_pool = sorted(pool, key=lambda x: (-x.views, x.date, x.id), reverse=False)
+    sorted_pool = sorted(pool, key=lambda x: (x.views, x.date), reverse=True)
+
     try:
         order = redis_store.cache_get(TOP_CACHE)
-        if not order:
-            order = [x.id for x in sorted(recent, key=lambda x: -x.views)]
+        valid_cached = [i for i in (order or []) if i in by_id]
+        if not valid_cached:
+            order = [x.id for x in sorted_pool]
             redis_store.cache_set(TOP_CACHE, order, ttl=3600)
     except Exception:  # Redis가 잠깐 안 되면 지금 조회수로 바로 매겨요
-        order = [x.id for x in sorted(recent, key=lambda x: -x.views)]
+        order = [x.id for x in sorted_pool]
+
     ranked = [by_id[i] for i in order if i in by_id]
-    known = set(order)
-    rest = sorted((x for x in recent if x.id not in known), key=lambda x: -x.views)  # 순서를 매긴 뒤 들어온 소식
+    known = {x.id for x in ranked}
+    # 부족한 개수는 나머지 보유 기사에서 조회수/최신순으로 채움
+    rest = [x for x in sorted(rows, key=lambda x: (x.views, x.date), reverse=True) if x.id not in known]
     return (ranked + rest)[:n]
 
 

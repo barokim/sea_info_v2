@@ -95,3 +95,13 @@ def collect(names: list[str] | None = None) -> dict:
     out = api.post("/admin/news/collect", json={"source_names": names})
     db.clear_cache()
     return out
+
+
+def start_collect_all() -> dict:
+    """오래 걸리는 전체 수집을 시작하고 즉시 돌아와요."""
+    return api.post("/admin/news/collect/start")
+
+
+def collect_status() -> dict:
+    """전체 수집의 진행·완료·오류 상태를 확인해요."""
+    return api.get("/admin/news/collect/status")
