@@ -2,9 +2,9 @@
 
 하는 일 (실제 수집 코드는 backend/news_collector.py에 있고, 관리자 화면의 [다시 수집]도 같은 코드를 써요)
     1. 사용 중이고 이용 조건 확인일이 있는 출처(NewsSource)를 골라요
-    2. 출처마다 RSS · Atom을 읽고, 이미 저장한 원문 주소는 건너뛰어요
+    2. 출처마다 RSS · Atom 또는 승인된 기관의 HTML 목록을 읽고, 이미 저장한 원문 주소는 건너뛰어요
     3. 새 소식마다 AI가 두세 문장으로 요약해요          backend.core.gemini.summarize
-    4. 요약한 소식을 SQLite에 저장해요 (바로 공개)       News(public=True, ai=True)
+    4. 이용 허락이 확인된 출처만 요약해 SQLite에 저장해요 (바로 공개)
     5. 이번 수집 기록(성공 · 실패 · 실패 이유)을 남겨요  NewsRun
     한 출처가 실패해도 나머지 출처는 계속 모아요. 실패한 출처는 A-05 ‘수집 기록’에 이유와 [다시 수집]으로 보여요.
     저장은 한 번에 해요 (중간에 문제가 생기면 이번 수집분은 모두 되돌려요).
@@ -12,6 +12,8 @@
 환경변수 (API 서버와 같은 .env를 읽어요)
     DATABASE_URL   예) sqlite:///./data/sea_info.db   ← 서버와 같은 DB를 가리켜야 화면에 보여요
     GEMINI_API_KEY 없으면 요약 대신 앞부분을 잘라 써요
+    SEA_INFO_APPROVED_NEWS_HOSTS  기관 전체의 본문 저장·AI 요약·공개 허락을 확인한 도메인만 쉼표로 지정
+    SEA_INFO_APPROVED_NEWS_URLS   게시물별 이용 허락·공공누리 조건을 확인한 원문 URL만 세미콜론으로 지정
 
 예약 실행 (매일 한국 시간 오전 6시)
     서버의 crontab에 한 줄을 넣어요.  (crontab -e)
@@ -47,6 +49,7 @@ sys.path.insert(0, str(ROOT))  # jobs/ 안에서 실행해도 backend/를 찾을
 from sqlmodel import Session, select  # noqa: E402
 
 from backend import news_collector  # noqa: E402
+from backend import korea_news  # noqa: E402
 from backend.core.gemini import summarize  # noqa: E402  (관리자 화면과 같은 요약 함수)
 from backend.core.timefmt import now  # noqa: E402
 from backend.db import engine, init_db  # noqa: E402
@@ -85,6 +88,12 @@ def dry_run(session: Session, sample: bool) -> int:
             note = "이용 조건 확인일이 없어요 → 실패로 기록돼요"
         elif news_collector.is_example(s.url):
             note = "예시 주소(example.com) → 실패로 기록돼요. 실제 RSS 주소로 바꿔 주세요"
+        elif s.url == korea_news.LIST_URL:
+            note = "해수부 목록 → 기사별 텍스트 공공누리 제1유형 확인 후에만 수집"
+        elif ((host := news_collector._base_host(s.url)) in news_collector.RIGHTS_REVIEW_HOSTS
+              and not news_collector._approved_host(host)
+              and not any(news_collector._base_host(u) == host for u in news_collector._approved_urls())):
+            note = "저장·AI 요약·공개 이용 허락 미확인 → 건너뛰어요"
         else:
             note = "가져올 예정"
         log(f"  · {s.name} ({s.url}) — {note}")
@@ -103,24 +112,26 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     check_timezone()
-    init_db()  # 테이블이 없으면 만들어요 (처음 켠 서버와 같은 동작)
+    if not args.dry_run:
+        init_db()  # 실제 저장 실행일 때만 테이블을 확인해요
     with Session(engine) as session:
         if args.dry_run and not args.fetch:
             return dry_run(session, args.sample)
 
         log("수집을 시작해요" + (" (미리 돌려 보기: 저장 안 함)" if args.dry_run else ""))
-        out = news_collector.collect(session, args.source, dry_run=args.dry_run, summarize=summarize, log=log)
-        for n in out["items"]:
-            log(f"  {'(저장 안 함) ' if args.dry_run else ''}+ {n.source} · {n.title} → {n.summary}")
-        if args.dry_run:
-            log(f"(미리 돌려 보기) {json.dumps({k: out[k] for k in ('ok', 'fail', 'failed')}, ensure_ascii=False)}")
-            return 0
-        try:
-            session.commit()  # 새 소식과 수집 기록을 한 번에 저장해요
-        except Exception as e:
-            session.rollback()
-            log(f"저장하지 못했어요. 이번 수집분은 모두 되돌렸어요: {e}")
-            return 2
+        with news_collector.collection_lock(session):
+            out = news_collector.collect(session, args.source, dry_run=args.dry_run, summarize=summarize, log=log)
+            for n in out["items"]:
+                log(f"  {'(저장 안 함) ' if args.dry_run else ''}+ {n.source} · {n.title} → {n.summary}")
+            if args.dry_run:
+                log(f"(미리 돌려 보기) {json.dumps({k: out[k] for k in ('ok', 'fail', 'failed')}, ensure_ascii=False)}")
+                return 0
+            try:
+                session.commit()  # 새 소식과 수집 기록을 한 번에 저장해요
+            except Exception as e:
+                session.rollback()
+                log(f"저장하지 못했어요. 이번 수집분은 모두 되돌렸어요: {e}")
+                return 2
     log(f"끝났어요. 새 소식 {out['ok']}건 · 실패 {out['fail']}곳")
     return 0 if out["fail"] == 0 else 1
 

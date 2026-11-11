@@ -21,6 +21,7 @@ from backend.models import Board, Observation, Post, Species, User
 from backend.schemas.aquarium import (AquariumOwner, ObservationPatch, PublicAquariumItem, PublicAquariumOut, PublicIn,
                                       PublicOut, SharedCard, SharedRecord, ShareIn, ShareOut)
 from backend.schemas.common import AquariumCard, ObservationOut, OkOut
+from backend.schemas.community import DEFAULT_PERM
 
 router = APIRouter(tags=["나의 수족관"])
 
@@ -47,8 +48,7 @@ def aquarium_cards(user_id: str, session: Session, shared_only: bool = False) ->
     groups: dict[str, list[Observation]] = {}
     for o in obs:
         if shared_only:
-            p = session.get(Post, o.post_id) if o.post_id else None
-            if not p or p.hidden or p.deleted:
+            if not _live_post(o, session):
                 continue
         groups.setdefault(o.species_id, []).append(o)
     cards = []
@@ -57,16 +57,16 @@ def aquarium_cards(user_id: str, session: Session, shared_only: bool = False) ->
         if not sp:
             continue
         recs.sort(key=lambda r: r.date, reverse=True)
-        shared = any(r.post_id and (p := session.get(Post, r.post_id)) and not p.hidden and not p.deleted for r in recs)
-        cards.append(AquariumCard(species=species_out(sp), records=[obs_out(r) for r in recs], count=len(recs),
-                                  last=recs[0].date, shared=bool(shared)))
+        records = [_observation_out(r, session) for r in recs]
+        cards.append(AquariumCard(species=species_out(sp), records=records, count=len(recs),
+                                  last=recs[0].date, shared=any(r.post_id for r in records)))
     return sorted(cards, key=lambda c: c.last, reverse=True)
 
 
 @router.get("/me/observations", response_model=list[ObservationOut], summary="내 관찰 기록")
 def my_observations(user: User = Depends(require_user), session: Session = Depends(get_session)):
     rows = session.exec(select(Observation).where(Observation.user_id == user.id)).all()
-    return [obs_out(o) for o in sorted(rows, key=lambda o: o.date, reverse=True)]
+    return [_observation_out(o, session) for o in sorted(rows, key=lambda o: o.date, reverse=True)]
 
 
 @router.get("/me/aquarium", response_model=list[AquariumCard], summary="나의 수족관 (생물별로 묶음)")
@@ -88,21 +88,29 @@ def _live_post(o: Observation, session: Session) -> Post | None:
     return p if p and not p.hidden and not p.deleted else None
 
 
+def _observation_out(o: Observation, session: Session) -> ObservationOut:
+    """응답의 공유 링크만 정규화하고 DB의 원래 연결은 변경하지 않아요."""
+    out = obs_out(o)
+    if not _live_post(o, session):
+        out.post_id = None
+    return out
+
+
 def _commit(session: Session, fail: str) -> None:
     try:
         session.commit()
-    except Exception as e:
+    except Exception:
         session.rollback()
-        print(f"[수족관 저장 오류] {e}", flush=True)
-        raise HTTPException(500, fail)
+        print("[수족관 저장 오류] 저장에 실패했어요.", flush=True)
+        raise HTTPException(500, fail) from None
 
 
 @router.patch("/me/observations/{obs_id}", response_model=ObservationOut, summary="관찰 기록 고치기 · 다른 생물 카드로 옮기기")
 def update_observation(obs_id: str, body: ObservationPatch, user: User = Depends(require_user),
                        session: Session = Depends(get_session)):
+    o = _mine(obs_id, user, session)
     if body.species_id == UNKNOWN_ID:
         unknown_species(session)
-    o = _mine(obs_id, user, session)
     if body.species_id is not None and body.species_id != o.species_id:
         if not session.get(Species, body.species_id):
             raise HTTPException(404, "고른 생물을 찾지 못했어요. 생물 이름을 다시 골라 주세요.")
@@ -122,7 +130,7 @@ def update_observation(obs_id: str, body: ObservationPatch, user: User = Depends
     session.add(o)
     _commit(session, "저장하지 못했어요. 입력한 내용은 그대로 있어요. 다시 시도해 주세요.")
     session.refresh(o)
-    return obs_out(o)
+    return _observation_out(o, session)
 
 
 @router.delete("/me/observations/{obs_id}", response_model=OkOut, summary="관찰 기록 지우기 (공유한 글도 함께 내려요)")
@@ -159,7 +167,7 @@ def share_observation(obs_id: str, body: ShareIn, user: User = Depends(require_u
     session.add(o)
     _commit(session, "공유하지 못했어요. 기록은 그대로 있어요. 다시 시도해 주세요.")  # 글과 기록 연결을 한 번에 저장
     session.refresh(o)
-    return ShareOut(post_id=post_id, observation=obs_out(o))
+    return ShareOut(post_id=post_id, observation=_observation_out(o, session))
 
 
 @router.post("/me/observations/{obs_id}/unshare", response_model=ObservationOut, summary="공유 취소 (기록은 ‘나만 보기’로 남아요)")
@@ -175,7 +183,7 @@ def unshare_observation(obs_id: str, user: User = Depends(require_user), session
     session.add(o)
     _commit(session, "공유를 취소하지 못했어요. 잠시 뒤 다시 시도해 주세요.")
     session.refresh(o)
-    return obs_out(o)
+    return _observation_out(o, session)
 
 
 @router.put("/me/aquarium/public", response_model=PublicOut, summary="내 수족관 공개 · 비공개")
@@ -202,7 +210,12 @@ def _owner(u: User) -> AquariumOwner:
 
 
 def shared_cards(user_id: str, session: Session) -> list[SharedCard]:
-    """그 회원이 지금 ‘공유 중’인 기록(관찰 이야기에 보이는 글)만 생물별로 묶어요."""
+    """비로그인 사용자도 읽을 수 있는 공유 기록만 생물별로 묶어요."""
+    board = session.get(Board, "obs")
+    if not board or board.status != "운영 중":
+        return []
+    if (board.perm or {}).get("read", DEFAULT_PERM["read"]) != "모두":
+        return []
     posts = session.exec(select(Post).where(Post.user_id == user_id, Post.board_id == "obs",
                                             Post.hidden == False, Post.deleted == False)).all()  # noqa: E712
     linked = {o.post_id: o for o in session.exec(select(Observation).where(Observation.user_id == user_id)).all()

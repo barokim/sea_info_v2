@@ -64,7 +64,9 @@ def _admin_out(q: Inquiry, session: Session) -> InquiryAdminOut:
     u = session.get(User, q.user_id) if q.user_id else None
     sender = u.nickname if u else f"비회원 · {q.email}"
     url = jira.browse_url(q.jira_key) if q.jira_key and get_settings().jira_base_url else ""
-    return InquiryAdminOut(**_out(q).model_dump(), sender=sender, jira_url=url, jira_error=q.jira_error,
+    # 과거 저장된 외부 오류 원문도 API 응답으로 내보내지 않아요.
+    error = "Jira 연동을 완료하지 못했어요. 연결 설정을 확인하고 잠시 뒤 다시 시도해 주세요." if q.jira_error else ""
+    return InquiryAdminOut(**_out(q).model_dump(), sender=sender, jira_url=url, jira_error=error,
                            mail_sent=q.mail_sent)
 
 
@@ -82,10 +84,10 @@ def _log(session: Session, actor: str, action: str, target: str, before: str = "
 def _commit(session: Session, fail: str) -> None:
     try:
         session.commit()
-    except Exception as e:
+    except Exception:
         session.rollback()
-        print(f"[제보 저장 오류] {e}", flush=True)
-        raise HTTPException(500, fail)
+        print("[제보 저장 오류] 저장에 실패했어요.", flush=True)
+        raise HTTPException(500, fail) from None
 
 
 # ---------- Jira ----------
@@ -99,7 +101,8 @@ def _jira_issue(q: Inquiry) -> tuple[str, str, str, list[str]]:
 def _send_to_jira(q: Inquiry, session: Session, strict: bool = False) -> None:
     """Jira 이슈를 만들고 결과를 저장해요. 이슈 키가 이미 있으면 다시 만들지 않아요(중복 방지).
 
-    같은 제보를 두 곳에서 동시에 보내지 않게 Redis로 잠깐 잠가요. strict=True(관리자 다시 보내기)면 잠겨 있을 때 알려요.
+    같은 제보를 동시에 보내지 않게 Redis로 120초 잠가요. strict=True면 잠겨 있을 때 알려요.
+    외부 성공 후 결과 저장 실패는 이 잠금만으로 중복을 보장할 수 없으므로 재시도 전 확인이 필요해요.
     """
     if q.jira_key:
         return
@@ -110,9 +113,17 @@ def _send_to_jira(q: Inquiry, session: Session, strict: bool = False) -> None:
         return
     lock = f"jira-create:{q.id}"
     try:
-        got = redis_store.gap_ok(lock, 60)
-    except Exception:  # Redis가 꺼져 있으면 잠금 없이 진행해요
-        got, lock = True, ""
+        # [BARO-CHANGE-024] 소유 토큰이 일치하는 잠금만 해제하여 다른 요청의 잠금을 보존한다.
+        got = redis_store.lock_acquire(lock, 120)
+    except Exception:
+        q.jira_status = "failed"
+        q.jira_error = "중복 방지 잠금을 확인하지 못해 Jira 전송을 보류했어요. 잠시 뒤 다시 시도해 주세요."
+        q.updated_at = now()
+        session.add(q)
+        _commit(session, "Jira 전송 보류 상태를 저장하지 못했어요. 목록을 새로 고쳐 주세요.")
+        if strict:
+            raise HTTPException(503, q.jira_error) from None
+        return
     if not got:
         if strict:
             raise HTTPException(409, "이 문의를 지금 Jira로 보내고 있어요. 잠시 뒤 목록을 새로 고쳐 주세요.")
@@ -124,22 +135,50 @@ def _send_to_jira(q: Inquiry, session: Session, strict: bool = False) -> None:
         summary, description, kind, labels = _jira_issue(q)
         try:
             key = jira.create_issue(summary, description, kind, labels)
-        except Exception as e:  # JiraError 와 뜻밖의 응답 모양 모두 '실패'로 남겨요
-            q.jira_status, q.jira_error = "failed", str(e)[:500] or type(e).__name__
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("missing issue key")
+        except Exception:  # 외부 응답 원문에는 비밀값이 포함될 수 있어 저장하지 않아요.
+            q.jira_status = "failed"
+            q.jira_error = "Jira 이슈 생성을 확인하지 못했어요. Jira에서 기존 이슈를 확인한 뒤 재시도해 주세요."
         else:
             q.jira_key, q.jira_status, q.jira_error = key, "created", ""
         q.updated_at = now()
         session.add(q)
         session.commit()
     finally:
-        if lock:
+        if got:
             try:
-                redis_store.r().delete(f"gap:{lock}")
+                redis_store.lock_release(lock, got)
             except Exception:
                 pass
 
 
+# [BARO-CHANGE-025] 완료 메일도 잠금 안에서 DB 상태를 다시 확인하여 동시 발송 가능성을 줄인다.
+# 외부 발송 성공 후 DB 기록 실패·잠금 만료는 완전한 중복 방지 대상에서 제외된다.
 def _mail_result(q: Inquiry, session: Session) -> str:
+    if q.status != "완료" or not q.answer or q.mail_sent:
+        return ""
+    lock = f"inquiry-mail:{q.id}"
+    try:
+        token = redis_store.lock_acquire(lock, 120)
+    except Exception:
+        return " 답변은 저장됐지만 중복 방지 잠금을 확인하지 못해 메일 발송을 보류했어요."
+    if not token:
+        return " 결과 메일을 다른 요청에서 처리 중이에요. 잠시 뒤 발송 상태를 확인해 주세요."
+    try:
+        session.refresh(q)
+        return _deliver_mail_result(q, session)
+    except Exception:
+        session.rollback()
+        return " 답변은 저장됐지만 메일 처리 결과를 확인하지 못했어요. 재전송 전에 발송 내역을 확인해 주세요."
+    finally:
+        try:
+            redis_store.lock_release(lock, token)
+        except Exception:
+            pass
+
+
+def _deliver_mail_result(q: Inquiry, session: Session) -> str:
     """‘완료’ + 답변이 있고 아직 안 보냈으면 제보한 사람에게 결과 메일을 보내요. 화면에 덧붙일 안내를 돌려줘요."""
     if q.status != "완료" or not q.answer or q.mail_sent:
         return ""
@@ -153,30 +192,37 @@ def _mail_result(q: Inquiry, session: Session) -> str:
             f"처리 상황은 여기에서도 볼 수 있어요: {where}\n알려 주셔서 고마워요.")
     try:
         res = mail.send(to, f"[Sea-Info Agent] 제보·건의 처리 결과 ({q.id})", body)
-    except Exception as e:
-        print(f"[답변 메일 오류] {q.id}: {e}", flush=True)
-        return " 답변 메일은 보내지 못했어요. 잠시 뒤 다시 저장하면 다시 보내요."
-    q.mail_sent = bool(res.get("sent") or res.get("dev"))
+    except Exception:
+        print("[답변 메일 오류] 메일 전송을 확인하지 못했어요.", flush=True)
+        return " 답변 메일의 발송 여부를 확인하지 못했어요. 중복 발송을 피하려면 발송 내역 확인 후 다시 저장해 주세요."
+    q.mail_sent = bool(res.get("sent"))
+    if not q.mail_sent:
+        if res.get("dev"):
+            return " 개발 모드로만 처리했어요. 실제 답변 메일은 발송되지 않았어요."
+        return " 답변 메일은 발송되지 않았어요. 메일 설정을 확인한 뒤 다시 저장해 주세요."
     session.add(q)
-    session.commit()
-    if res.get("dev"):
-        return " 답변 메일도 보냈어요. (개발 모드라 서버 터미널에 찍혔어요)"
-    return " 답변 메일도 보냈어요." if q.mail_sent else ""
+    _commit(session, "메일 전송 후 발송 기록을 저장하지 못했어요. 중복 발송을 피하려면 발송 내역을 먼저 확인해 주세요.")
+    return " 답변 메일도 보냈어요."
 
 
-def _notify_ops(q: Inquiry) -> None:
+# [BARO-CHANGE-026] 운영 알림의 미설정·개발 처리·발송·확인 불가를 접수 결과와 구분한다.
+def _notify_ops(q: Inquiry) -> str:
     s = get_settings()
     if not s.ops_email:
-        return
-    jira_line = {"created": f"Jira 이슈: {q.jira_key}", "failed": f"Jira 이슈: 만들지 못했어요 ({q.jira_error[:120]})",
+        return " 운영팀 알림 메일은 미설정 상태예요. 접수 내용은 문의 관리에 저장됐어요."
+    jira_line = {"created": f"Jira 이슈: {q.jira_key}", "failed": "Jira 이슈: 등록 여부 확인이 필요해요",
                  }.get(q.jira_status, "Jira 이슈: 미연결")
     body = "\n".join([f"새 제보·건의가 들어왔어요.", "", f"접수번호: {q.id}", f"유형: {q.type}", f"제목: {q.title}",
                       f"연락 메일: {q.email or '(회원)'}", jira_line, "", q.body, "",
                       f"관리 화면: {s.public_site_url.rstrip('/')}/admin-inquiries"])
     try:
-        mail.send(s.ops_email, f"[Sea-Info Agent] 새 제보 {q.id} · [{q.type}] {q.title}", body)
-    except Exception as e:  # 알림 메일이 실패해도 제보는 이미 저장됐어요
-        print(f"[담당 그룹 메일 오류] {q.id}: {e}", flush=True)
+        result = mail.send(s.ops_email, f"[Sea-Info Agent] 새 제보 {q.id} · [{q.type}] {q.title}", body)
+        if result.get("sent"):
+            return " 운영팀 알림 메일을 발송했어요."
+        return " 운영팀 알림 메일은 실제 발송되지 않았어요. 접수 내용은 문의 관리에 저장됐어요."
+    except Exception:  # 알림 메일이 실패해도 제보는 이미 저장됐어요
+        print("[담당 그룹 메일 오류] 알림 전송을 확인하지 못했어요.", flush=True)
+        return " 운영팀 알림 메일의 발송 여부는 확인하지 못했어요. 접수 내용은 저장됐어요."
 
 
 def _complete_from_jira(q: Inquiry, session: Session, actor: str, action: str) -> str:
@@ -208,19 +254,35 @@ def create_inquiry(body: InquiryIn, request: Request, user: User | None = Depend
         pass
     q = Inquiry(id=_new_id(session), type=body.type, title=body.title, body=body.body,
                 user_id=user.id if user else None, email=email, jira_status="off")
+    # [BARO-CHANGE-027] 최초 저장 이후 후속 연동 실패가 접수 실패로 바뀌지 않도록 응답을 별도 보관한다.
+    rid = q.id
     session.add(q)
     _commit(session, "보내지 못했어요. 적은 내용은 그대로 있어요. 다시 시도해 주세요.")  # ① 먼저 저장
+    result = InquiryCreated(id=rid, jira_status="failed", message="접수 내용은 저장됐어요.")
     try:  # ② Jira (실패해도 제보는 남아요)
         _send_to_jira(q, session)
-    except Exception as e:
+        result.jira_status, result.jira_key = q.jira_status, q.jira_key
+    except Exception:
         session.rollback()
-        print(f"[Jira 단계 오류] {q.id}: {e}", flush=True)
-        q = session.get(Inquiry, q.id)
-        q.jira_status, q.jira_error = "failed", str(e)[:500]
-        session.add(q)
-        session.commit()
-    _notify_ops(q)  # ③ 담당 그룹 메일
-    return InquiryCreated(id=q.id, jira_status=q.jira_status, jira_key=q.jira_key)
+        print("[Jira 단계 오류] 연동 결과 저장을 확인하지 못했어요.", flush=True)
+        result.message += " Jira 연동 결과는 확인하지 못했어요. 운영팀이 기존 이슈를 확인해야 해요."
+        try:
+            q = session.get(Inquiry, rid)
+            if q is not None and q.jira_key:
+                result.jira_status, result.jira_key = q.jira_status, q.jira_key
+            if q is not None and not q.jira_key:
+                q.jira_status = "failed"
+                q.jira_error = "Jira 연동 결과를 확인하지 못했어요. 기존 이슈 확인 후 재시도해 주세요."
+                session.add(q)
+                session.commit()
+        except Exception:
+            session.rollback()
+    try:
+        result.message += _notify_ops(q)  # ③ 알림의 실패도 이미 접수된 결과를 바꾸지 않는다.
+    except Exception:
+        session.rollback()
+        result.message += " 운영팀 알림 결과는 확인하지 못했어요."
+    return result
 
 
 @router.get("/me/inquiries", response_model=list[InquiryOut], summary="내 제보·건의 (회원)")
@@ -245,27 +307,40 @@ def _mask(email: str) -> str:
 def lookup_send(body: LookupIn, session: Session = Depends(get_session)):
     _match(body, session)
     key = f"{body.id}:{body.email}"
-    r = redis_store.r()
-    n = r.incr(f"lookupsend:{key}")
-    if n == 1:
-        r.expire(f"lookupsend:{key}", LOOKUP_WINDOW)
-    if n > LOOKUP_SENDS:
-        raise HTTPException(429, "코드를 너무 여러 번 받았어요. 10분 뒤에 다시 받아 주세요.")
-    code = redis_store.code_create("lookup", key)
+    # [BARO-CHANGE-028] 인증 저장소 장애는 조회 인증을 우회하지 않고 503으로 안내한다.
+    try:
+        r = redis_store.r()
+        n = r.incr(f"lookupsend:{key}")
+        if n == 1:
+            r.expire(f"lookupsend:{key}", LOOKUP_WINDOW)
+        if n > LOOKUP_SENDS:
+            raise HTTPException(429, "코드를 너무 여러 번 받았어요. 10분 뒤에 다시 받아 주세요.")
+        code = redis_store.code_create("lookup", key)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(503, "처리 확인 인증을 지금 사용할 수 없어요. 잠시 뒤 다시 시도해 주세요.") from None
     try:
         res = mail.code_mail(body.email, code, "lookup")
-    except Exception as e:
-        print(f"[처리 확인 메일 오류] {e}", flush=True)
-        raise HTTPException(502, "메일을 보내지 못했어요. 잠시 뒤 다시 받아 주세요.")
+    except Exception:
+        print("[처리 확인 메일 오류] 메일 전송을 확인하지 못했어요.", flush=True)
+        raise HTTPException(502, "메일을 보내지 못했어요. 잠시 뒤 다시 받아 주세요.") from None
     s = get_settings()
-    return LookupSendOut(sent=bool(res.get("sent")), dev_code=code if (not s.smtp_on and s.is_local) else None,
-                         message=f"{_mask(body.email)}로 6자리 코드를 보냈어요. 5분 안에 적어 주세요.")
+    dev = bool(res.get("dev") and not s.smtp_on and s.is_local)
+    if not res.get("sent") and not dev:
+        raise HTTPException(502, "확인 코드 메일이 발송되지 않았어요. 잠시 뒤 다시 받아 주세요.")
+    return LookupSendOut(sent=bool(res.get("sent")), dev_code=code if dev else None,
+                         message=("개발 모드예요. 실제 메일은 발송되지 않았어요. 화면의 코드를 입력해 주세요." if dev
+                                  else f"{_mask(body.email)}로 6자리 코드를 보냈어요. 5분 안에 적어 주세요."))
 
 
 @router.post("/inquiries/lookup/verify", response_model=InquiryOut, summary="비회원 처리 확인 ② 코드 확인 → 처리 상황")
 def lookup_verify(body: LookupVerifyIn, session: Session = Depends(get_session)):
     q = _match(body, session)
-    ok, _, msg = redis_store.code_check("lookup", f"{body.id}:{body.email}", body.code)
+    try:
+        ok, _, msg = redis_store.code_check("lookup", f"{body.id}:{body.email}", body.code)
+    except Exception:
+        raise HTTPException(503, "처리 확인 인증을 지금 사용할 수 없어요. 잠시 뒤 다시 시도해 주세요.") from None
     if not ok:
         raise HTTPException(400, msg)
     return _out(q)
@@ -331,8 +406,8 @@ def admin_jira_sync(rid: str, admin: User = Depends(require_admin), session: Ses
         raise HTTPException(409, "Jira가 연결되어 있지 않아요. 서버 환경변수 JIRA_*를 넣고 서버를 다시 켠 뒤 시도해 주세요.")
     try:
         name, done = jira.issue_status(q.jira_key)
-    except Exception as e:
-        raise HTTPException(502, f"Jira 상태를 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요. ({str(e)[:150]})")
+    except Exception:
+        raise HTTPException(502, "Jira 상태를 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요.") from None
     if done:
         msg = _complete_from_jira(q, session, admin.nickname, f"Jira 상태 가져오기: {name}")
     else:

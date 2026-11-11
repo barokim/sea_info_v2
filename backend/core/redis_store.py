@@ -142,6 +142,19 @@ def gap_ok(key: str, seconds: int) -> bool:
     return seconds <= 0 or bool(r().set(f"gap:{key}", 1, nx=True, ex=seconds))
 
 
+# [BARO-SCOPE-EXTENSION] 주요 5개 파일 밖의 승인된 연관 수정.
+# 변경 이유: inquiries.py가 만료 후 다른 요청이 얻은 잠금을 삭제하지 않도록 소유 토큰을 사용한다.
+# [BARO-CHANGE-021] 잠금 획득과 소유자 조건부 해제. 만료 이후의 외부 작업 중복까지 보장하지 않는다.
+def lock_acquire(key: str, seconds: int = 120) -> str | None:
+    token = secrets.token_urlsafe(24)
+    return token if r().set(f"lock:{key}", token, nx=True, ex=seconds) else None
+
+
+def lock_release(key: str, token: str) -> None:
+    r().eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+             1, f"lock:{key}", token)
+
+
 # ---------- 개발용: 보내지 못한 메일 보관 ----------
 def dev_mail_push(item: dict) -> None:
     r().lpush("dev:mails", json.dumps(item, ensure_ascii=False))

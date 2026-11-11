@@ -364,6 +364,16 @@ def _retry(name: str) -> None:
     S["contents_retry_toast"] = (name, out, reason)
 
 
+def _collect_all() -> None:
+    """[지금 전체 수집하기]: 서버에서 수집을 시작하고 바로 돌아와요."""
+    try:
+        news_data.start_collect_all()
+    except ApiError as e:
+        S["contents_retry_toast"] = ("전체 출처", None, e.message)
+        return
+    S["contents_collect_waiting"] = True
+
+
 def _next_collect() -> datetime:
     n = datetime.now(KST)
     six = datetime.combine(n.date(), time(6), tzinfo=KST)
@@ -371,6 +381,18 @@ def _next_collect() -> datetime:
 
 
 def runs_tab() -> None:
+    status = news_data.collect_status()
+    if status["state"] == "running":
+        st.info("전체 출처를 수집하는 중이에요. 잠시 뒤 ‘상태 새로고침’을 눌러 결과를 확인해 주세요.")
+        if st.button("상태 새로고침", icon=":material/refresh:", key="contents_collect_refresh"):
+            st.rerun()
+    elif S.pop("contents_collect_waiting", False):
+        if status["state"] == "done":
+            st.toast(f"전체 수집 완료 · 새 소식 {status['ok']}건 · 실패 {status['fail']}곳", icon=":material/check:")
+        elif status["state"] == "error":
+            st.error(status.get("message", "수집에 실패했어요."))
+        else:
+            st.warning("서버가 재시작되어 진행 상태를 확인할 수 없어요. 아래 수집 기록을 확인해 주세요.")
     runs = news_data.runs()
     last = runs[0] if runs else None
     nxt = _next_collect()
@@ -380,7 +402,14 @@ def runs_tab() -> None:
     m2.metric("다음 수집 (매일 오전 6시)", f"{nxt:%m.%d} 06:00", border=True)
     m3.metric("공개 중인 소식", f"{len(db.news())}건", border=True)
     st.space("small")
-    ui.section("날짜별 기록")
+
+    with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+        ui.section("날짜별 기록")
+        if st.button("지금 전체 수집하기", type="primary", icon=":material/refresh:", key="contents_collect_all_btn",
+                     disabled=status["state"] == "running"):
+            _collect_all()
+            st.rerun()
+
     ui.muted("한국 시간 오전 6시에 켜 둔 출처에서 모아요. 실패해도 이전 소식은 그대로 보여요.")
     if not runs:
         ui.empty_state("🗂️", "아직 수집 기록이 없어요. 내일 오전 6시에 첫 기록이 남아요.")

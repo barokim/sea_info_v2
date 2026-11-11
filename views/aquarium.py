@@ -5,7 +5,7 @@
 
 시안 캡처용: ?shot=empty (빈 수족관) | edit (기록 수정 팝업) | delete (지우기 확인 팝업) | share (공유하기 팝업)
             edit · delete · share는 sp가 없으면 별불가사리(sp_star) 카드에서 열어요.
-            ?sp=unknown 또는 ?shot=unknown → 미확인 생물 카드 (체험 회원에게 예시 미확인 기록을 한 번 담아요)
+            ?sp=unknown 또는 ?shot=unknown → 기존 미확인 생물 카드 (예시 기록을 저장하지 않아요)
 데이터는 FastAPI(나의 수족관 API)에 저장돼요. 쓰기가 실패하면 서버가 준 안내(e.message)를 보여줘요.
 """
 from datetime import date
@@ -31,12 +31,6 @@ if S.get("aq_toast"):
     st.toast(S.pop("aq_toast"))
 
 # ---------- 시안 캡처용 상태 만들기 ----------
-if user and legacy_unknown and not S.get("_aq_unknown_demo"):
-    S["_aq_unknown_demo"] = True
-    try:
-        aq.ensure_unknown_demo(user["id"])  # 이미 미확인 기록이 있으면 아무것도 하지 않아요
-    except ApiError as e:
-        st.warning(e.message, icon=":material/warning:")
 if shot and S.get("_aq_shot") != shot:
     S["_aq_shot"] = shot
     S.pop("aq_dialog", None)

@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 set PYTHONUTF8=1
-if "%API_PORT%"=="" set API_PORT=8000
+if "%API_PORT%"=="" set API_PORT=8002
 if "%WEB_PORT%"=="" set WEB_PORT=8501
 
 echo.
@@ -32,6 +32,19 @@ ren .venv .venv-backup-%RANDOM% || (echo   가상환경을 사용하는 서버�
 %PY% -m venv .venv || (echo   가상환경 생성에 실패했어요. 위 오류를 확인해 주세요. & pause & exit /b 1)
 :activate_venv
 call .venv\Scripts\activate.bat || (pause & exit /b 1)
+
+echo.
+rem Stop before installation, Redis, or log redirection if the API port is occupied.
+echo [확인] 기존 API 서버와 포트 충돌 검사
+
+".venv\Scripts\python.exe" -B tools\runtools.py check-api-port
+if errorlevel 1 (
+  echo.
+  echo 기존 프로그램은 자동으로 종료하지 않았어요.
+  echo 서버를 종료하거나 다른 API_PORT를 지정한 뒤 다시 실행해 주세요.
+  pause
+  exit /b 1
+)
 
 echo [3/6] 필요한 프로그램 설치
 python tools\runtools.py need-install

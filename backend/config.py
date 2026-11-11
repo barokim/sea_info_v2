@@ -11,6 +11,7 @@
 """
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,8 +44,18 @@ class Settings(BaseSettings):
     mail_from: str = ""
     ops_email: str = ""  # 새 제보가 오면 알림을 받을 담당 그룹 메일
 
-    # 물때 공공 API (선택, 김바로 routers/tide.py 의 _fetch 에서 사용)
-    tide_api_key: str = ""
+    # [BARO-SCOPE-EXTENSION] 주요 5개 파일 밖의 승인된 연관 수정.
+    # 변경 이유: tide.py에서 사용자가 추가한 조석 전용 키를 기존 TIDE_API_KEY와 호환해 읽는다.
+    # [BARO-CHANGE-011] 조석 전용 → 기존 키 → 공통 키 순서. 관측 키를 예보 키로 대체하지 않는다.
+    tide_api_key: str = Field("", validation_alias=AliasChoices("KHOA_TIDE_API_KEY", "TIDE_API_KEY", "KHOA_API_KEY", "tide_api_key"))
+
+    # [BARO-SCOPE-EXTENSION] 허용된 물때 API 설정 연계 수정.
+    # [BARO-CHANGE-044] 실측 조위·수온은 예보 키와 분리된 관측 API 키로만 요청한다.
+    observation_api_key: str = Field("", repr=False, validation_alias=AliasChoices("KHOA_OBSERVATION_API_KEY", "KHOA_API_KEY"))
+
+    # [BARO-SCOPE-EXTENSION] 이름 검색 API의 서버 전용 키 설정. 홈·서비스에는 키를 전달하지 않는다.
+    # [BARO-CHANGE-032] species_search.py에서 MBRIS 공식 종정보를 조회하며 키는 repr에서도 숨긴다.
+    mbris_api_key: str = Field("", repr=False)
 
     # Jira (제보 → 이슈)
     jira_base_url: str = ""  # 예: https://your-team.atlassian.net
