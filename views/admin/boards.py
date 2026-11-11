@@ -358,8 +358,10 @@ def save_fd() -> None:
             cd.add_field(b["id"], field_payload(f), pos)
             S["boards_toast"] = f"‘{f['label']}’ 항목을 붙였어요"
         else:
-            cd.update_field(b["id"], b["fields"][idx]["key"], {**field_payload(f), "order": pos})
-            S["boards_toast"] = "항목을 저장했어요"
+            old_key = b["fields"][idx]["key"]
+            cd.update_field(b["id"], old_key, {**field_payload(f), "order": pos})
+            S["boards_toast"] = (f"고유 키를 ‘{old_key}’에서 ‘{f['key']}’로 바꿨어요"
+                                 if old_key != f["key"] else "항목을 저장했어요")
     except cd.Problem as e:
         S["boards_fd_errs"] = e.errors or {"_other": e.message}
         return
@@ -395,6 +397,8 @@ def fd_body() -> None:
         fields.error_text(e.get("key"))
         if used:
             st.caption(f"글 {used}개에 쓰인 항목이라 바꿀 수 없어요.")
+        elif old:
+            st.caption("아직 글에 쓰이지 않아 고유 키를 바꿀 수 있어요. 키만 바꿔도 저장돼요.")
     c1, c2 = st.columns(2)
     with c1:
         st.selectbox("유형 *", list(fields.TYPES), format_func=fields.TYPES.get, key="boards_fd_type")

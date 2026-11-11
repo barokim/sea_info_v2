@@ -17,6 +17,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, func, select
 
 from backend.config import get_settings
+from backend.community_models import CommentReply
 from backend.core import gemini, redis_store
 from backend.core.convert import board_out, comment_out, post_out
 from backend.core.security import optional_user, require_user
@@ -83,9 +84,12 @@ def view(p: Post, session: Session) -> PostView:
                     author_grade=u.grade if u else "")
 
 
-def comment_view(c: Comment, session: Session) -> CommentView:
+def comment_view(c: Comment, session: Session, parent_id: str | None = None) -> CommentView:
+    if c.deleted:
+        # 답글이 남은 원댓글은 자리만 표시하고, 원문과 작성자 정보는 보내지 않아요.
+        return CommentView(id=c.id, post=c.post_id, user="", author=None, body="", created="", created_at="", deleted=True)
     return CommentView(**comment_out(c, session).model_dump(),
-                       created_at=as_kst(c.created_at).isoformat(timespec="minutes"))
+                       created_at=as_kst(c.created_at).isoformat(timespec="minutes"), parent_id=parent_id)
 
 
 def banned_in(session: Session, text: str) -> str | None:
@@ -107,6 +111,22 @@ def live_post(post_id: str, session: Session) -> Post:
     p = session.get(Post, post_id)
     if not p or p.deleted:
         raise HTTPException(404, "글을 찾지 못했어요. 지워졌거나 숨겨진 글일 수 있어요.")
+    return p
+
+
+def readable_post(post_id: str, viewer: User | None, session: Session) -> Post:
+    """글 상세와 댓글 조회에 같은 읽기 권한을 적용해요."""
+    p = live_post(post_id, session)
+    mine = bool(viewer and viewer.id == p.user_id)
+    if is_admin(viewer) or mine:
+        return p
+    b = session.get(Board, p.board_id)
+    if p.hidden or not b or b.status != "운영 중":
+        raise HTTPException(404, "글을 찾지 못했어요. 지워졌거나 숨겨진 글일 수 있어요.")
+    level = perm_of(b, "read")
+    if not allowed(viewer, level):
+        msg = "이 게시판의 글은 로그인하면 읽을 수 있어요." if level == "회원" else "이 게시판의 글은 운영자만 읽을 수 있어요."
+        raise HTTPException(403, {"code": "read_forbidden", "message": msg, "board": b.id, "level": level})
     return p
 
 
@@ -172,16 +192,20 @@ def board_one(board_id: str, session: Session = Depends(get_session)):
 
 
 @router.get("/posts", response_model=list[PostView],
-            summary="게시글 목록 (board를 주면 그 게시판의 검색 항목 · 공지 고정 · 목록 권한을 따라요)")
+            summary="게시글 목록 (게시판 상태 · 목록/읽기 권한을 검사하고, board를 주면 검색 항목 · 공지 고정도 따라요)")
 def posts(board: str | None = None, q: str = "", sort: str = "latest", user: str | None = None,
           include_hidden: bool = False, limit: int = Query(200, le=500), offset: int = 0,
           viewer: User | None = Depends(optional_user), session: Session = Depends(get_session)):
     b = session.get(Board, board) if board else None
-    if b and not is_admin(viewer) and (b.status != "운영 중" or not allowed(viewer, perm_of(b, "list"))):
-        return []
     stmt = select(Post).where(Post.deleted == False)  # noqa: E712
     if board:
         stmt = stmt.where(Post.board_id == board)
+    if not is_admin(viewer):
+        # 목록 응답에 본문도 포함되므로, 게시판을 생략해도 목록/읽기 권한을 모두 검사해요.
+        candidates = [b] if b else session.exec(select(Board)).all()
+        readable_ids = [x.id for x in candidates if x.status == "운영 중"
+                        and allowed(viewer, perm_of(x, "list")) and allowed(viewer, perm_of(x, "read"))]
+        stmt = stmt.where(Post.board_id.in_(readable_ids))
     if user:
         stmt = stmt.where(Post.user_id == user)
     if not (include_hidden and is_admin(viewer)):
@@ -215,26 +239,29 @@ def recent(n: int = 6, session: Session = Depends(get_session)):
 @router.get("/posts/{post_id}", response_model=PostView,
             summary="게시글 하나 (닫힌 게시판 · 읽기 권한은 관리자 · 글쓴이 말고는 막아요)")
 def post_one(post_id: str, viewer: User | None = Depends(optional_user), session: Session = Depends(get_session)):
-    p = session.get(Post, post_id)
-    mine = bool(viewer and p and viewer.id == p.user_id)
-    can_see_hidden = is_admin(viewer) or mine
-    if not p or p.deleted or (p.hidden and not can_see_hidden):
-        raise HTTPException(404, "글을 찾지 못했어요. 지워졌거나 숨겨진 글일 수 있어요.")
-    b = session.get(Board, p.board_id)
-    if not (is_admin(viewer) or mine):
-        if not b or b.status != "운영 중":
-            raise HTTPException(404, "글을 찾지 못했어요. 지워졌거나 숨겨진 글일 수 있어요.")
-        level = perm_of(b, "read")
-        if not allowed(viewer, level):
-            msg = "이 게시판의 글은 로그인하면 읽을 수 있어요." if level == "회원" else "이 게시판의 글은 운영자만 읽을 수 있어요."
-            raise HTTPException(403, {"code": "read_forbidden", "message": msg, "board": b.id, "level": level})
-    return view(p, session)
+    return view(readable_post(post_id, viewer, session), session)
 
 
-@router.get("/posts/{post_id}/comments", response_model=list[CommentView], summary="댓글 목록")
-def comments(post_id: str, session: Session = Depends(get_session)):
-    rows = session.exec(select(Comment).where(Comment.post_id == post_id, Comment.deleted == False)).all()  # noqa: E712
-    return [comment_view(c, session) for c in sorted(rows, key=lambda c: as_kst(c.created_at))]
+@router.get("/posts/{post_id}/comments", response_model=list[CommentView], summary="댓글 목록 (부모 글의 읽기 권한을 따라요)")
+def comments(post_id: str, viewer: User | None = Depends(optional_user), session: Session = Depends(get_session)):
+    readable_post(post_id, viewer, session)
+    rows = sorted(session.exec(select(Comment).where(Comment.post_id == post_id)).all(),
+                  key=lambda c: (as_kst(c.created_at), c.id))
+    if not rows:
+        return []
+    parents = {link.comment_id: link.parent_id for link in session.exec(
+        select(CommentReply).where(CommentReply.comment_id.in_([c.id for c in rows]))).all()}
+    replies: dict[str, list[Comment]] = {}
+    for c in rows:
+        if not c.deleted and c.id in parents:
+            replies.setdefault(parents[c.id], []).append(c)
+    out = []
+    for c in rows:
+        if c.id in parents or (c.deleted and c.id not in replies):
+            continue
+        out.append(comment_view(c, session))
+        out.extend(comment_view(reply, session, c.id) for reply in replies.get(c.id, []))
+    return out
 
 
 # ---------- 사진 ----------
@@ -399,11 +426,20 @@ def comment_add(post_id: str, body: CommentIn, user: User = Depends(require_user
         raise HTTPException(409, "이 게시판은 댓글을 받지 않아요.")
     if not allowed(user, perm_of(b, "comment")):
         raise HTTPException(403, f"{b.name}에는 운영자만 댓글을 달 수 있어요.")
+    if body.parent_id:
+        parent = session.get(Comment, body.parent_id)
+        if not parent or parent.deleted or parent.post_id != p.id:
+            raise HTTPException(404, "답글을 달 댓글을 찾지 못했어요. 지워졌거나 다른 게시글의 댓글이에요.")
+        if session.get(CommentReply, parent.id):
+            raise HTTPException(409, "답글에는 다시 답글을 달 수 없어요. 원래 댓글에 답글을 남겨 주세요.")
     if errs := banned_errors(session, {"body": body.body}):
         fail(errs)
     c = Comment(id=new_id("c"), post_id=p.id, user_id=user.id, body=body.body)
     try:
         session.add(c)
+        if body.parent_id:
+            session.flush()
+            session.add(CommentReply(comment_id=c.id, parent_id=body.parent_id))
         p.comments = (p.comments or 0) + 1
         session.add(p)
         session.commit()
@@ -412,7 +448,7 @@ def comment_add(post_id: str, body: CommentIn, user: User = Depends(require_user
         print(f"[댓글 오류] {e}", flush=True)
         raise HTTPException(500, "댓글을 달지 못했어요. 잠시 뒤 다시 시도해 주세요.")
     session.refresh(c)
-    return comment_view(c, session)
+    return comment_view(c, session, body.parent_id)
 
 
 @router.delete("/comments/{comment_id}", response_model=OkOut, summary="댓글 지우기 (쓴 사람 · 관리자)")

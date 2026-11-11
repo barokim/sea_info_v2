@@ -439,10 +439,13 @@ class PhotoOut(BaseModel):
 
 class CommentView(CommentOut):
     created_at: str
+    parent_id: Optional[str] = None
+    deleted: bool = False
 
 
 class CommentIn(BaseModel):
     body: str = Field(max_length=5000)
+    parent_id: Optional[str] = Field(None, min_length=1, max_length=40, description="답글을 달 원댓글 ID. 비우면 일반 댓글")
 
     @field_validator("body")
     @classmethod

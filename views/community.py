@@ -298,6 +298,15 @@ def show_list() -> None:
         st.markdown(f'<p class="sia-muted">{esc(b.get("desc", ""))}</p>', unsafe_allow_html=True)
         write_button(b)
 
+    if not admin and not cd.can(user, b["perm"]["read"]):
+        if b["perm"]["read"] == "회원" and not user:
+            ui.empty_state("🔒", "이 게시판의 글은 로그인하면 읽을 수 있어요.")
+            if st.button("로그인 / 회원가입", type="primary", key="community_list_gate"):
+                auth_gate.login_required("이 게시판의 글을 읽을 수 있어요", here="community", board=bid)
+        else:
+            ui.empty_state("🔒", "이 게시판의 글은 운영자만 읽을 수 있어요.")
+        return
+
     where = " · ".join(cd.opt(b, "search") or ["제목"])
     c1, c2 = st.columns(CONTROL_COLUMNS, vertical_alignment="center")
     with c1:
@@ -308,10 +317,27 @@ def show_list() -> None:
                                     default=cd.opt(b, "sort"), required=True, key=f"community_sort_{bid}",
                                     label_visibility="collapsed")
 
-    rows = cd.list_posts(b, q, sort or "latest")
     size = int(cd.opt(b, "page_size") or 20)
     n_key = f"community_n_{bid}"
+    filters = (q.strip(), sort or "latest", size)
+    if S.get(f"{n_key}_filters") != filters:
+        S[f"{n_key}_filters"] = filters
+        S[n_key] = size
     n = S.get(n_key, size)
+    # 표시할 글과 다음 1개를 조회하고, API의 요청당 500개 한도는 offset으로 나눠 가져와요.
+    rows = []
+    try:
+        for offset in range(0, n + 1, 500):
+            limit = min(500, n + 1 - offset)
+            batch = cd.list_posts(b, q, sort or "latest", limit=limit, offset=offset)
+            rows.extend(batch)
+            if len(batch) < limit:
+                break
+    except ApiError as e:
+        st.error(e.message, icon=":material/error:")
+        if st.button("다시 불러오기", key="community_retry"):
+            st.rerun()
+        return
 
     if not rows:
         if q.strip():
@@ -322,13 +348,14 @@ def show_list() -> None:
             ui.empty_state("🐚", "아직 글이 없어요. 첫 글을 남겨 볼까요?")
         return
     if q.strip():
-        ui.muted(f"‘{q.strip()}’ 검색 결과 {len(rows)}개")
+        ui.muted(f"‘{q.strip()}’ 검색 결과 {n}개 표시 중" if len(rows) > n
+                 else f"‘{q.strip()}’ 검색 결과 {len(rows)}개")
     if b.get("layout") == "card":
         card_grid(rows[:n], b)
     else:
         list_rows(rows[:n], b)
     if len(rows) > n:
-        if st.button(f"더 보기 ({min(n, len(rows))} / {len(rows)})", width="stretch", key="community_more",
+        if st.button(f"더 보기 (현재 {n}개)", width="stretch", key="community_more",
                      icon=":material/expand_more:"):
             S[n_key] = n + size
             st.rerun()
@@ -407,31 +434,95 @@ def del_comment(cid: str) -> None:
         S["community_toast"] = e.message
 
 
-def show_comments(p: dict, b: dict) -> None:
+def submit_reply(pid: str, parent_id: str) -> None:
+    key = f"community_reply_body_{parent_id}"
+    try:
+        cd.add_comment(pid, S.get(key) or "", parent_id=parent_id)
+    except ApiError as e:
+        S[f"community_reply_error_{parent_id}"] = e.message
+        return
+    S.pop(key, None)
+    S.pop(f"community_reply_error_{parent_id}", None)
+    S.pop("community_reply_open", None)
+    S["community_toast"] = "답글을 달았어요"
+
+
+def reply_form(pid: str, parent_id: str) -> None:
+    with st.form(f"community_reply_form_{parent_id}", border=True):
+        st.text_area("답글 쓰기", max_chars=300, height=90, key=f"community_reply_body_{parent_id}",
+                     placeholder="이 댓글에 답글을 남겨 주세요")
+        if S.get(f"community_reply_error_{parent_id}"):
+            st.error(S[f"community_reply_error_{parent_id}"])
+        with st.container(horizontal=True, gap="small"):
+            st.form_submit_button("답글 달기", type="primary", icon=":material/reply:",
+                                  on_click=submit_reply, args=(pid, parent_id))
+            st.form_submit_button("취소", on_click=lambda: S.pop("community_reply_open", None))
+
+
+def show_comments(p: dict, b: dict, *, read_only: bool = False) -> None:
     pid = p["id"]
-    cm = cd.comments_for(p)
+    try:
+        cm = cd.comments_for(p)
+    except ApiError as e:
+        st.info(e.message, icon=":material/info:")
+        return
     st.html('<div id="community-comments" style="scroll-margin-top:80px"></div>')
+    st.html("""<style>
+        [class*="st-key-community_comment_row_"],
+        [class*="st-key-community_reply_row_"] {
+            border-bottom: 1px solid #C8DEE2;
+            padding-bottom: 12px;
+        }
+        [class*="st-key-community_reply_row_"] {
+            margin-left: 20px;
+            background: #F5FAFB;
+            border-left: 2px solid #C8DEE2;
+            border-radius: 8px;
+            padding: 10px 12px 12px;
+        }
+        [class*="st-key-community_comment_meta_"] button {
+            min-height: 24px !important; height: 24px;
+            padding: 0 4px !important; color: #6B8291;
+        }
+        [class*="st-key-community_comment_meta_"] button p {
+            font-size: 12px !important; line-height: 20px;
+        }
+    </style>""")
     if not cm:
-        ui.muted("아직 댓글이 없어요. 첫 댓글을 남겨 볼까요?")
+        ui.muted("아직 댓글이 없어요." if read_only else "아직 댓글이 없어요. 첫 댓글을 남겨 볼까요?")
+    level = b["perm"]["comment"]
+    can_reply = not read_only and (cd.can(user, level) or (not user and level == "회원"))
     for c in cm:
-        cu = c.get("author") or db.user(c["user"])
-        with st.container(gap="small"):
-            content, actions = st.columns([10, 1], gap="small", vertical_alignment="top")
-            with content:
-                st.html(
-                    '<div style="padding:6px 0 10px;border-bottom:1px solid #E3ECEF;'
-                    'font-size:15px;line-height:1.5;overflow-wrap:anywhere">'
-                    f'<strong>{html.escape(cu["nickname"])}</strong>'
-                    f'<div style="margin:4px 0">{esc(c["body"])}</div>'
-                    '<div style="font-size:13px;color:#6B8291">'
-                    f'{post_created(c, with_time=True)}</div></div>'
-                )
-            with actions:
+        is_reply = bool(c.get("parent_id"))
+        deleted = bool(c.get("deleted"))
+        row_type = "reply" if is_reply else "comment"
+        with st.container(gap="small", key=f"community_{row_type}_row_{c['id']}"):
+            if deleted:
+                st.caption("삭제된 댓글이에요.")
+                continue
+            cu = c.get("author") or db.user(c["user"])
+            st.html(
+                '<div style="padding-top:6px;font-size:15px;line-height:1.5;overflow-wrap:anywhere">'
+                f'{"↳ " if is_reply else ""}<strong>{html.escape(cu["nickname"])}</strong>'
+                f'<div style="margin:4px 0">{esc(c["body"])}</div></div>'
+            )
+            with st.container(horizontal=True, width="content", gap="small", vertical_alignment="center",
+                              key=f"community_comment_meta_{c['id']}"):
+                st.html(f'<span style="font-size:12px;line-height:24px;color:#6B8291;white-space:nowrap">'
+                        f'{post_created(c, with_time=True)}</span>', width="content")
+                if can_reply and not is_reply:
+                    if st.button("답글", type="tertiary", icon=":material/reply:", key=f"community_reply_{c['id']}"):
+                        if auth_gate.login_required("답글을 남길 수 있어요", here="community", post=pid):
+                            S["community_reply_open"] = (pid, c["id"])
                 if uid and (c["user"] == uid or admin):
                     st.button("지우기", type="tertiary", icon=":material/delete:", key=f"community_cdel_{c['id']}",
                               on_click=del_comment, args=(c["id"],))
+            if can_reply and user and not is_reply and S.get("community_reply_open") == (pid, c["id"]):
+                reply_form(pid, c["id"])
 
-    level = b["perm"]["comment"]
+    if read_only:
+        ui.muted("지금은 기존 댓글만 볼 수 있어요.")
+        return
     if cd.can(user, level):
         with st.form("community_cform", clear_on_submit=True, border=False):
             body = st.text_area("댓글 쓰기", max_chars=300, height=90, placeholder="따뜻한 한마디를 남겨 주세요",
@@ -485,11 +576,12 @@ def show_detail(pid: str) -> None:
             ui.empty_state("🔒", gate["message"])
         return
     closed = b is not None and b["status"] != "운영 중"
-    if not p or not b or ((p.get("hidden") or closed) and not admin):
+    mine = bool(p and uid == p["user"])
+    if not p or not b or ((p.get("hidden") or closed) and not (admin or mine)):
         ui.page_header("글을 볼 수 없어요")
         ui.empty_state("🐚", "지워졌거나 잠시 숨겨진 글이에요. 목록에서 다른 글을 둘러보세요.")
         return
-    if not cd.can(user, b["perm"]["read"]):
+    if not (admin or mine) and not cd.can(user, b["perm"]["read"]):
         ui.page_header(b["name"])
         ui.empty_state("🔒", "이 게시판의 글은 로그인하면 읽을 수 있어요.")
         if st.button("로그인 / 회원가입", type="primary", key="community_read_gate") \
@@ -499,12 +591,12 @@ def show_detail(pid: str) -> None:
 
     sp = db.species(p.get("species") or "")
     author = author_of(p)
-    mine = uid == p["user"]
     rules = cd.opt(b, "rules")
+    interaction_locked = bool((p.get("hidden") or closed) and not admin)
 
     if p.get("hidden"):
-        st.warning("신고가 쌓여 고객 화면에서 숨겨진 글이에요. 관리자에게만 보여요. "
-                   "게시물·신고 관리에서 복구할 수 있어요.", icon=":material/visibility_off:")
+        st.warning("신고가 쌓여 고객 화면에서 숨겨진 글이에요. 관리자와 글쓴이만 볼 수 있어요. "
+                   "관리자가 게시물·신고 관리에서 복구할 수 있어요.", icon=":material/visibility_off:")
     elif closed:
         st.warning(f"‘{b['status']}’ 상태인 게시판의 글이에요. 고객 화면에는 보이지 않아요.",
                    icon=":material/visibility_off:")
@@ -547,7 +639,7 @@ def show_detail(pid: str) -> None:
         with st.container(horizontal=True, horizontal_alignment="distribute", gap="small",
                           vertical_alignment="center"):
             with st.container(horizontal=True, width="content", gap="small", vertical_alignment="center"):
-                if rules["like"]:
+                if rules["like"] and not interaction_locked:
                     liked = bool(uid and cd.is_liked(pid))
                     if st.button(f"공감 {p.get('likes', 0)}", icon=":material/favorite:", key="community_like",
                                  type="primary" if liked else "tertiary") \
@@ -575,11 +667,11 @@ def show_detail(pid: str) -> None:
                     )
             with st.container(horizontal=True, width="content", gap="small", vertical_alignment="center"):
                 if mine or admin:
-                    if st.button("고치기", icon=":material/edit:", key="community_edit", type="tertiary"):
+                    if not (closed and not admin) and st.button("고치기", icon=":material/edit:", key="community_edit", type="tertiary"):
                         nav.go("write", edit=pid)
                     if st.button("지우기", icon=":material/delete:", key="community_delete", type="tertiary"):
                         delete_dialog(p)
-                if rules["report"] and not mine:
+                if rules["report"] and not mine and not interaction_locked:
                     done = bool(uid and cd.reported(pid))
                     if st.button("신고했어요" if done else "신고", icon=":material/flag:", type="tertiary",
                                  disabled=done, key="community_report") \
@@ -588,7 +680,20 @@ def show_detail(pid: str) -> None:
 
         st.space("small")
         if rules["comment"]:
-            show_comments(p, b)
+            st.html("""<style>
+                .st-key-community_comments_panel {
+                    background: #EAF6F7;
+                    border: 1px solid #D5E9EC;
+                    border-radius: 16px;
+                    padding: 20px;
+                }
+                @media (max-width: 640px) {
+                    .st-key-community_comments_panel { padding: 14px; }
+                }
+            </style>""")
+            with st.container(key="community_comments_panel"):
+                st.markdown("**댓글**")
+                show_comments(p, b, read_only=interaction_locked)
         else:
             ui.muted("이 게시판은 댓글을 받지 않아요.")
     if side is not None:
