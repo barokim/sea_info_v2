@@ -71,6 +71,16 @@ with c2:
 
 shown = [r for r in rows if (status == "전체" or r["status"] == status) and (kind == "전체" or r["type"] == kind)]
 
+# [BARO-SCOPE-EXTENSION] 주요 5개 파일 밖의 승인된 연관 수정.
+# 변경 이유: inquiry_data.py의 조회 항목을 관리자 화면에서 쉽게 찾을 수 있도록 필터를 제공한다.
+# [BARO-CHANGE-029] 전체 목록 기반 집계는 유지하며 검색·Jira 상태는 표시 목록에만 적용한다.
+search = st.text_input("접수번호·제목·내용 검색", key="ainq_search").strip()
+jira_filter = st.selectbox("Jira 상태", ["전체"] + list(inq.JIRA_ADMIN), key="ainq_jira_filter",
+                           format_func=lambda v: inq.JIRA_ADMIN[v][0] if v in inq.JIRA_ADMIN else v)
+shown = [r for r in shown if (not search or any(search.casefold() in str(r.get(k, "")).casefold()
+                                              for k in ("id", "title", "body")))
+         and (jira_filter == "전체" or r.get("jira_status") == jira_filter)]
+
 if not shown:
     ui.empty_state("🐚", "조건에 맞는 문의가 없어요. 상태나 유형을 바꿔 보세요.")
     st.stop()
@@ -91,7 +101,7 @@ table = [{"접수번호": r["id"], "유형": r["type"], "제목": r["title"], "�
           "Jira": r.get("jira_key") or inq.JIRA_ADMIN.get(r.get("jira_status", "off"), ("", ""))[0]} for r in shown]
 default = {"selection": {"rows": [shot_row]}} if shot_row is not None else None
 picked = st.dataframe(table, hide_index=True, on_select="rerun", selection_mode="single-row",
-                      key=f"ainq_table_{status}_{kind}", selection_default=default)
+                      key=f"ainq_table_{status}_{kind}_{jira_filter}_{search}", selection_default=default)
 sel = list(picked.selection.rows) if picked else []
 if not sel and shot_row is not None:  # 시안 캡처용: 줄을 고른 상태
     sel = [shot_row]
@@ -130,7 +140,8 @@ with st.container(border=True):
         elif jst == "failed":
             st.markdown("**Jira 이슈** · 만들지 못했어요")
             st.error(item.get("jira_error") or "Jira에 보내지 못했어요.", icon=":material/sync_problem:")
-            st.caption("제보는 잘 저장돼 있어요. [Jira 다시 보내기]를 누르면 이슈를 한 번만 만들어요.")
+            st.caption("제보는 저장돼 있어요. 재시도 전에 Jira에 같은 접수번호의 이슈가 있는지 확인해 주세요. "
+                       "중복 방지 저장소에 장애가 있으면 전송을 보류해요.")
             if demo_failed:
                 st.caption("시안 예시 상태예요. Jira가 연결되어 있지 않으면 다시 보내기는 안내만 보여요.")
         else:
@@ -157,7 +168,8 @@ with st.container(border=True):
             if st.button("Jira 상태 가져오기", icon=":material/cloud_download:", key=f"ainq_jira_sync_{rid}"):
                 run(inq.jira_sync, rid)
     if item.get("mail_sent"):
-        st.caption(":material/mark_email_read: 답변 메일을 보냈어요. 다시 저장해도 메일은 한 번만 가요.")
+        st.caption(":material/mark_email_read: 답변 메일 발송 완료로 기록되어 있어 다시 저장해도 재발송하지 않아요.")
     else:
         st.caption("저장하면 제보·건의의 ‘처리 확인’과 내 정보 › 내 문의에 바로 보여요. "
-                   "‘완료’ + 답변으로 저장하면 제보한 사람에게 결과 메일이 가요.")
+                   "실제 메일 발송 완료는 아직 기록되지 않았어요. ‘완료’ + 답변으로 저장하면 발송을 시도해요. "
+                   "개발 모드 출력은 실제 발송이 아니며, 설정이나 전송 오류가 있으면 메일이 발송되지 않을 수 있어요.")

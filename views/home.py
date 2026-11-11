@@ -31,7 +31,13 @@ def area(draw, *args) -> None:
 
 # ---------- 메인 배너 ----------
 def hero() -> None:
-    left_n, limit = db.remaining(user)
+    # [BARO-CHANGE-001] 횟수 조회 실패를 배너와 분리해 식별 진입을 유지한다.
+    # 조회하지 못한 횟수를 정상 값으로 대체하지 않는다.
+    try:
+        left_n, limit = db.remaining(user)
+        note = f"오늘 남은 횟수 {left_n} / {limit}회" if user else f"로그인 없이 오늘 {limit}번 무료"
+    except Exception:
+        note = "오늘 이용 가능 횟수를 확인하지 못했어요."
     with st.container(key="home_hero", gap="medium"):  # 배너 안에 버튼까지 함께 (버튼이 배너에 붙어 보이지 않게)
         st.markdown('<div class="eyebrow">DISCOVER THE OCEAN</div><h2>이 생물, 이름이 뭘까요?</h2>'
                     '<p>바닷가에서 만난 생물을 찍어 올리면 AI가 이름과 안전 정보를 알려 줘요.</p>',
@@ -39,8 +45,20 @@ def hero() -> None:
         with st.container(horizontal=True, vertical_alignment="center", gap="medium"):
             if st.button("사진으로 알아보기", type="primary", icon=":material/photo_camera:", key="home_identify"):
                 nav.go("identify")
-            note = f"오늘 남은 횟수 {left_n} / {limit}회" if user else f"로그인 없이 오늘 {limit}번 무료"
-            st.markdown(f'<span class="sia-hero-chip">{note}</span>', unsafe_allow_html=True)
+            # [BARO-CHANGE-031] 홈에는 작은 이름 검색창만 배치하고 제출 후 전용 결과 화면으로 이동한다.
+            # 입력할 때마다 외부 API를 호출하지 않고 Enter 또는 검색 버튼으로만 제출한다.
+            with st.form("home_species_search", border=False, width=280):
+                with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+                    name = st.text_input("생물 이름으로 검색", max_chars=100, label_visibility="collapsed",
+                                         placeholder="생물 이름으로 검색", key="home_species_name")
+                    search = st.form_submit_button("검색", icon=":material/search:")
+                if search:
+                    term = " ".join((name or "").split())
+                    if term:
+                        nav.go("species_search", q=term)
+                    else:
+                        st.warning("검색할 생물 이름을 적어 주세요.")
+        st.markdown(f'<span class="sia-hero-chip">{note}</span>', unsafe_allow_html=True)
     st.markdown('<div class="sia-steps">'
                 '<div class="step"><span class="n">1</span>사진 올리기</div><span class="arr">›</span>'
                 '<div class="step"><span class="n">2</span>AI가 알아보기</div><span class="arr">›</span>'
@@ -64,12 +82,20 @@ def recent_posts() -> None:
         return
     with st.container(horizontal=True, gap="small", horizontal_alignment="distribute"):
         for p in rows:
-            sp = db.species(p.get("species") or "") or aq.UNKNOWN
-            who = db.user(p["user"])
+            # [BARO-CHANGE-002] 카드 보조 정보 조회 실패를 개별 카드 안에서 처리한다.
+            # 게시글 본문은 기존 공개 API 응답만 사용하며 다른 자료로 복원하지 않는다.
+            try:
+                sp = db.species(p.get("species") or "") or aq.UNKNOWN
+            except Exception:
+                sp = aq.UNKNOWN
+            try:
+                nickname = db.user(p["user"])["nickname"]
+            except Exception:
+                nickname = "작성자 정보 확인 불가"
             with st.container(border=True, width=CARD_W, gap="small"):
                 ui.photo(sp["emoji"], sp.get("tone", "aqua"), height=104, label=sp["name"])
                 st.markdown(f"**{p['title']}**")
-                ui.muted(f"{who['nickname']} · {p['created']}")
+                ui.muted(f"{nickname} · {p['created']}")
                 with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center",
                                   gap="small"):
                     ui.chips(ui.chip(f"♥ {p['likes']}", "coral"))

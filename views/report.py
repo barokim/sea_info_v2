@@ -5,18 +5,19 @@
 처리 확인: 회원 → 내 정보(U-18) › 내 문의 / 비회원 → 접수번호 + 이메일 → 메일로 받은 6자리 코드 (2단계)
 
 시안 캡처용: ?shot=done (접수 완료) | lookup (비회원 처리 확인 결과, 예시 R-1106-Q7MX / guest@example.com)
-            | lookup_code (비회원 처리 확인 2단계: 코드 입력, 개발 모드면 코드 안내 상자)
+            | lookup_code (코드 입력 화면 예시, 실제 메일 발송·인증 없음)
 """
 import streamlit as st
 
 from components import nav, ui
-from services import db, auth
+from services import auth
 from services import inquiry_data as inq
 from services.api import ApiError
 
 S = st.session_state
 user = auth.current_user()
 shot = st.query_params.get("shot")
+preview = shot in ("done", "lookup", "lookup_code")
 qtype = st.query_params.get("type", "")
 qname = st.query_params.get("name", "")
 
@@ -27,6 +28,14 @@ DEMO = ("R-1106-Q7MX", "guest@example.com")
 FIELDS = ("report_kind", "report_title", "report_body", "report_photo", "report_email")
 LOOKUP = ("report_lookup_step", "report_lookup_q", "report_lookup_sent", "report_lookup_result", "report_lookup_error")
 
+# [BARO-CHANGE-015] 계정 전환 시 이전 사용자의 접수·인증 정보와 작성 내용을 화면에 남기지 않는다.
+owner = (user or {}).get("id") or "guest"
+if S.get("report_owner") != owner:
+    for key in list(S):
+        if key.startswith("report_"):
+            S.pop(key, None)
+    S["report_owner"] = owner
+
 
 def valid_email(e: str) -> bool:
     return "@" in e and "." in e.split("@")[-1]
@@ -35,10 +44,14 @@ def valid_email(e: str) -> bool:
 def reset_lookup() -> None:
     for k in LOOKUP:
         S.pop(k, None)
+    # 현재 코드 입력 위젯은 다음 실행에서 초기화한다.
+    S["report_lookup_clear_code"] = True
 
 
 def send_code(rid: str, email: str) -> bool:
     """처리 확인 ① 메일로 코드 보내기. 성공하면 2단계(코드 입력)로 넘어가요."""
+    if preview:
+        return False
     try:
         out = inq.lookup_send(rid, email)
     except ApiError as e:
@@ -46,6 +59,10 @@ def send_code(rid: str, email: str) -> bool:
         return False
     S["report_lookup_q"] = (rid.strip().upper(), email.strip().lower())
     S["report_lookup_sent"] = out
+    # [BARO-CHANGE-016] 재발급 성공 시 이전 조회 결과와 코드 입력을 지연 초기화한다.
+    # 현재 실행 중 생성된 Streamlit 위젯 값은 직접 삭제하지 않는다.
+    S.pop("report_lookup_result", None)
+    S["report_lookup_clear_code"] = True
     S["report_lookup_step"] = "code"
     S.pop("report_lookup_error", None)
     return True
@@ -53,6 +70,13 @@ def send_code(rid: str, email: str) -> bool:
 
 def check_code(code: str) -> None:
     """처리 확인 ② 코드 확인 → 처리 상황."""
+    if preview:
+        return
+    # [BARO-CHANGE-017] 화면에서 형식을 검사하되 실제 인증은 서버가 수행한다.
+    code = code.strip()
+    if len(code) != 6 or not code.isascii() or not code.isdigit():
+        S["report_lookup_error"] = "메일로 받은 6자리 숫자를 적어 주세요."
+        return
     rid, email = S["report_lookup_q"]
     try:
         S["report_lookup_result"] = inq.lookup_verify(rid, email, code)
@@ -63,31 +87,12 @@ def check_code(code: str) -> None:
     S.pop("report_lookup_error", None)
 
 
-# ---------- 시안 캡처용 상태 만들기 ----------
-if shot and S.get("_report_shot") != shot:
-    S["_report_shot"] = shot
-    S.pop("report_done", None)
-    S.pop("report_errors", None)
-    reset_lookup()
-    if shot == "done":
-        title, body = "‘소라게’ 정보가 달라요", "AI가 소라게라고 했는데 집게 다리 색이 달라 보여요."
-        email = "" if user else "parent@example.com"
-        try:  # 회원은 이미 보낸 같은 제보가 있으면 그걸 보여줘요 (캡처할 때마다 쌓이지 않게)
-            hit = next((r for r in inq.mine() if r["title"] == title), None) if user else None
-            out = hit or inq.add("생물 정보 정정", title, body, email=email)
-            S["report_done"] = {"id": out["id"], "kind": "생물 정보 정정", "title": title, "email": email,
-                                "jira_status": out.get("jira_status", "off"), "jira_key": out.get("jira_key", "")}
-        except ApiError as e:
-            st.error(e.message)
-    elif shot in ("lookup", "lookup_code") and not user:
-        if send_code(*DEMO) and shot == "lookup":
-            dev = (S.get("report_lookup_sent") or {}).get("dev_code")
-            if dev:  # 개발 모드에서만 코드를 바로 알 수 있어요. 아니면 코드 입력 단계에서 멈춰요
-                check_code(dev)
-
-
 # ---------- 보내기 (버튼 콜백: 확인한 뒤 칸 아래에 안내를 보여요) ----------
 def submit() -> None:
+    # [BARO-CHANGE-018] 동일 화면의 재진입을 억제하고 네트워크 오류는 접수 여부 불확실로 안내한다.
+    # 서버의 영구적인 중복 접수 방지를 보장하는 장치는 아니다.
+    if preview or S.get("report_submitting") or S.get("report_done"):
+        return
     kind = S.get("report_kind") or KINDS[0]
     title = (S.get("report_title") or "").strip()
     body = (S.get("report_body") or "").strip()
@@ -105,13 +110,25 @@ def submit() -> None:
     S["report_errors"] = err
     if err:
         return
+    S["report_submitting"] = True
     try:
         out = inq.add(kind, title, body, email="" if user else email)
     except ApiError as e:
-        S["report_errors"] = {"form": e.message or "보내지 못했어요. 적은 내용은 그대로 있어요. 다시 시도해 주세요."}
+        message = e.message
+        if e.status == 0 or e.status >= 500:
+            message += " 접수 여부가 불확실할 수 있어요. 중복 제출 전에 기존 문의를 확인해 주세요."
+        S["report_errors"] = {"form": message or "요청을 확인하지 못했어요. 적은 내용은 그대로 있어요."}
         return
+    finally:
+        S["report_submitting"] = False
     S["report_done"] = {"id": out["id"], "kind": kind, "title": title, "email": "" if user else email,
-                        "jira_status": out.get("jira_status", "off"), "jira_key": out.get("jira_key", "")}
+                        "jira_status": out.get("jira_status", "off"), "jira_key": out.get("jira_key", ""),
+                        "message": out.get("message", "")}
+    # [BARO-CHANGE-019] 접수 정보만 조회 양식에 채우고 코드 인증 단계는 그대로 유지한다.
+    if not user:
+        reset_lookup()
+        S["report_lookup_id"] = out["id"]
+        S["report_lookup_email"] = email.lower()
     for k in FIELDS:
         S.pop(k, None)
 
@@ -166,19 +183,25 @@ def show_form() -> None:
         st.text_area("내용", value=body_default, max_chars=1000, height=140, key="report_body",
                      placeholder="언제, 어떤 화면에서, 무슨 일이 있었나요?")
         field_error("body")
-        st.file_uploader("사진 (선택, 1장)", max_upload_size=db.settings()["max_mb"], type=["jpg", "jpeg", "png"], key="report_photo",
-                         help="화면을 찍은 사진이 있으면 더 빨리 살펴볼 수 있어요.")
+        st.file_uploader("사진 첨부 (준비 중)", type=["jpg", "jpeg", "png"], key="report_photo",
+                         disabled=True, help="사진 첨부 기능을 준비하고 있어요. 현재는 사진이 접수되지 않아요.")
+        st.caption("지금은 제목·내용과 연락 정보만 접수돼요. 사진은 첨부되지 않아요.")
         if not user:
             st.text_input("답변 받을 이메일", key="report_email", placeholder="example@email.com")
             field_error("email")
             st.caption("이메일은 답변과 처리 확인 코드를 보내는 데만 써요. 로그인하면 이메일 없이 보낼 수 있어요.")
         field_error("form")
         st.button("제보 보내기", type="primary", icon=":material/send:", width="stretch", key="report_send",
-                  on_click=submit)
+                  on_click=submit, disabled=preview or S.get("report_submitting", False))
 
 
 def show_done(d: dict) -> None:
-    st.success("제보를 보냈어요! 알려 주셔서 고마워요.", icon=":material/check_circle:")
+    if preview:
+        st.info("접수 완료 화면 예시예요. 실제로 접수되거나 메일이 발송되지 않았어요.")
+    else:
+        st.success("제보를 보냈어요! 알려 주셔서 고마워요.", icon=":material/check_circle:")
+        if d.get("message"):
+            st.info(d["message"])
     with st.container(border=True):
         st.markdown("**접수번호**")
         st.code(d["id"], language=None)
@@ -196,7 +219,7 @@ def show_done(d: dict) -> None:
         steps.insert(2, "맞는 정보로 확인되면 생물 정보에 반영해요.")
     st.markdown("\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1)))
     with st.container(horizontal=True, gap="small"):
-        if st.button("다른 제보 보내기", icon=":material/add:", key="report_again"):
+        if st.button("다른 제보 보내기", icon=":material/add:", key="report_again", disabled=preview):
             S.pop("report_done", None)
             S.pop("report_errors", None)
             st.rerun()
@@ -222,7 +245,7 @@ def show_lookup_form() -> None:
                 S["report_lookup_error"] = "접수번호와 이메일을 모두 적어 주세요."
             elif send_code(rid, em):
                 st.rerun()
-        st.caption(f"체험용 예시: `{DEMO[0]}` / `{DEMO[1]}`")
+        st.caption("본인이 접수한 문의의 접수번호와 이메일을 입력해 주세요.")
     lookup_error()
 
 
@@ -274,6 +297,13 @@ def show_check() -> None:
     step = S.get("report_lookup_step", "form")
     if step == "result" and isinstance(S.get("report_lookup_result"), dict):
         inquiry_box(S["report_lookup_result"])
+        # [BARO-CHANGE-020] 세션의 조회 결과를 최신 상태로 오인하지 않게 재인증 경로를 제공한다.
+        st.caption("인증했을 때 조회한 결과예요. 최신 상태를 보려면 새 코드로 다시 확인해 주세요.")
+        if st.button("최신 상태 다시 확인", key="report_lookup_refresh"):
+            rid, email = S["report_lookup_q"]
+            if send_code(rid, email):
+                st.rerun()
+        lookup_error()
         if st.button("다른 제보 확인하기", icon=":material/search:", key="report_lookup_again"):
             reset_lookup()
             st.rerun()
@@ -284,12 +314,32 @@ def show_check() -> None:
 
 
 # ---------- 화면 그리기 ----------
+if S.pop("report_lookup_clear_code", False):
+    S.pop("report_lookup_code", None)
 ui.page_header("제보·건의", "오류나 바라는 점을 알려 주세요. 꼼꼼히 읽고 답해 드릴게요.")
+if preview:
+    st.warning("시안 예시 화면이에요. 저장·조회 인증·메일 발송은 실행하지 않아요. 실제 이용은 URL의 shot 값을 지워 주세요.")
 left, right = st.columns([3, 2], gap="large")
 with left:
-    if S.get("report_done"):
+    if preview:
+        show_done({"id": DEMO[0], "kind": "생물 정보 정정", "title": "‘소라게’ 정보가 달라요",
+                   "email": DEMO[1], "jira_status": "off"})
+    elif S.get("report_done"):
         show_done(S["report_done"])
     else:
         show_form()
 with right:
-    show_check()
+    if preview:
+        ui.section("처리 확인 · 예시")
+        if shot == "lookup_code":
+            with st.container(border=True):
+                st.markdown("**메일로 받은 코드 적기 · 예시**")
+                st.caption(f"{DEMO[0]} · {DEMO[1]} · 실제 메일은 발송되지 않았어요.")
+                st.text_input("6자리 코드", value="123456", disabled=True, key="report_preview_code")
+                st.button("처리 상황 보기", disabled=True, key="report_preview_check")
+                st.button("코드 다시 받기", disabled=True, key="report_preview_resend")
+        else:
+            inquiry_box({"id": DEMO[0], "type": "생물 정보 정정", "title": "‘소라게’ 정보가 달라요",
+                         "date": "2026-11-06", "status": "접수", "answer": "", "jira_status": "off"})
+    else:
+        show_check()

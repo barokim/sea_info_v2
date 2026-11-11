@@ -19,21 +19,31 @@ me = auth.current_user()
 uid = st.query_params.get("u")
 shot = st.query_params.get("shot")
 
+# 같은 종 ID라도 다른 회원의 팝업 상태를 이어 쓰지 않아요.
+if S.get("_ua_owner") != uid:
+    S.pop("ua_dialog", None)
+    S.pop("_ua_shot", None)
+    S["_ua_owner"] = uid
+
 
 def close_dialog() -> None:
     S.pop("ua_dialog", None)
 
 
-def public_users() -> list[dict]:
-    """[{owner: {id, nickname, character, grade}, species_count, record_count}] — 못 불러오면 빈 목록."""
+def public_users() -> list[dict] | None:
+    """공개 목록. 조회 실패(None)와 정상적인 빈 목록([])을 구분해요."""
     try:
         return aq.public_aquariums()
     except ApiError:
-        return []
+        st.warning("공개 수족관 목록을 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.")
+        return None
 
 
 def other_aquariums(skip: str | None = None) -> None:
-    rows = [x for x in public_users() if x["owner"]["id"] != skip]
+    users = public_users()
+    if users is None:
+        return
+    rows = [x for x in users if x["owner"]["id"] != skip]
     if not rows:
         return
     ui.section("다른 수족관 구경하기")
@@ -67,6 +77,8 @@ def records_dialog(card: dict, owner: dict) -> None:
 if not uid:
     ui.page_header("다른 사람 수족관", "다른 회원이 공개한 수족관을 구경해요.")
     rows = public_users()
+    if rows is None:
+        st.stop()
     if not rows:
         ui.empty_state("🐚", "아직 공개된 수족관이 없어요. 내 수족관을 공개하면 여기에 보여요.")
     with st.container(horizontal=True, gap="small"):
@@ -85,8 +97,19 @@ try:
     view = aq.public_view(uid)
     owner, cards, public = view["owner"], view["cards"], True
 except ApiError as e:
+    close_dialog()
     if e.status == 403:  # 비공개 수족관: 닉네임 · 캐릭터만 보여줘요
-        owner, cards, public, private_msg = db.user(uid), [], False, e.message
+        try:
+            owner = db.user(uid)
+        except ApiError:
+            owner = None
+        if not owner:
+            ui.page_header("다른 사람 수족관")
+            st.info(e.message, icon=":material/lock:")
+            st.warning("회원 정보를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.")
+            other_aquariums(skip=uid)
+            st.stop()
+        cards, public, private_msg = [], False, e.message
     elif e.status == 404:
         ui.page_header("다른 사람 수족관")
         st.warning(e.message, icon=":material/search_off:")
