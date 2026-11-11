@@ -469,11 +469,31 @@ class LikedOut(BaseModel):
 
 class ReportIn(BaseModel):
     reason: Literal["스팸", "욕설", "개인정보", "기타"]
-    detail: str = Field("", max_length=100, description="‘기타’ 설명 (선택). 지금은 신고 표에 칸이 없어 저장하지 않아요")
+    detail: str = Field("", max_length=100, description="‘기타’ 설명 (선택). 신고와 함께 저장하며 관리자만 조회해요")
+
+    @field_validator("detail")
+    @classmethod
+    def _detail(cls, v: str) -> str:
+        return v.strip()
+
+    @model_validator(mode="after")
+    def _other_only(self):
+        if self.reason != "기타":
+            self.detail = ""
+        return self
 
 
 class ReportedOut(BaseModel):
     reported: bool
+
+
+class ReportDetailOut(BaseModel):
+    report_id: int
+    post_id: str
+    reason: str
+    detail: str = Field("", description="입력하지 않았거나 저장 기능 추가 전 신고는 빈 문자열")
+    status: str
+    created_at: str
 
 
 # ---------- 게시판 관리 (A-02) ----------

@@ -17,17 +17,17 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, func, select
 
 from backend.config import get_settings
-from backend.community_models import CommentReply
+from backend.community_models import CommentReply, ReportDetail
 from backend.core import gemini, redis_store
 from backend.core.convert import board_out, comment_out, post_out
-from backend.core.security import optional_user, require_user
+from backend.core.security import optional_user, require_admin, require_user
 from backend.core.timefmt import as_kst, now
 from backend.db import get_session, new_id
 from backend.models import AdminLog, Board, Comment, Like, Observation, Post, Report, Species, User
 from backend.routers.core import settings_data
 from backend.schemas.common import BoardOut, OkOut, PostOut
 from backend.schemas.community import (DEFAULT_PERM, DEFAULT_RULES, CommentIn, CommentView, LikedOut, LikeOut, PhotoOut, PostCreated,
-                                       PostIn, PostPatch, PostText, PostView, ReportedOut, ReportIn, active,
+                                       PostIn, PostPatch, PostText, PostView, ReportDetailOut, ReportedOut, ReportIn, active,
                                        check_extra, field_detail, ko_errors)
 
 
@@ -153,7 +153,8 @@ def take_photo(photo_id: str | None, user: User) -> str:
     owner = redis_store.cache_get(f"postphoto:{photo_id}")
     path = pathlib.Path(get_settings().upload_dir) / f"{photo_id}.jpg"
     if owner != user.id or not path.exists():
-        fail({"photo": "사진 보관 시간이 지났어요. 사진을 다시 골라 주세요."})
+        detail = field_detail({"photo": "사진 보관 시간이 지났어요. 다시 시도하면 사진을 새로 올려요."})
+        raise HTTPException(422, {**detail, "code": "photo_expired"})
     return f"{photo_id}.jpg"
 
 
@@ -523,8 +524,11 @@ def report_add(post_id: str, body: ReportIn, user: User = Depends(require_user),
         raise HTTPException(409, "내가 쓴 글은 신고할 수 없어요. 고치거나 지워 주세요.")
     limit = int(settings_data(session).get("report_hide", 5))
     try:
-        session.add(Report(post_id=p.id, user_id=user.id, reason=body.reason))
+        report = Report(post_id=p.id, user_id=user.id, reason=body.reason)
+        session.add(report)
         session.flush()  # 같은 사람이 같은 글을 또 신고하면 여기서 막혀요 (고유 조건)
+        if body.detail:
+            session.add(ReportDetail(report_id=report.id, detail=body.detail))
         p.report_count = session.exec(select(func.count()).select_from(Report).where(Report.post_id == p.id)).one()
         # 자동 숨김은 '대기' 중인 신고만 세요 (관리자가 '문제없음'으로 처리한 신고는 빼요)
         pending = session.exec(select(func.count()).select_from(Report)
@@ -544,3 +548,29 @@ def report_add(post_id: str, body: ReportIn, user: User = Depends(require_user),
     if hidden_now:
         return OkOut(message="신고했어요. 신고가 쌓여서 글을 잠시 숨겼어요. 운영자가 확인할게요.")
     return OkOut(message="신고했어요. 운영자가 확인할게요.")
+
+
+def report_detail_view(report: Report, detail: ReportDetail | None) -> ReportDetailOut:
+    return ReportDetailOut(report_id=report.id, post_id=report.post_id, reason=report.reason,
+                           detail=detail.detail if detail else "", status=report.status,
+                           created_at=as_kst(report.created_at).isoformat(timespec="minutes"))
+
+
+@router.get("/admin/community/report-details", response_model=list[ReportDetailOut],
+            summary="관리자: 신고 설명 목록 (post_id로 게시글 필터, 최신순)")
+def report_details(post_id: str | None = None, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
+                   _: User = Depends(require_admin), session: Session = Depends(get_session)):
+    stmt = select(Report, ReportDetail).outerjoin(ReportDetail, Report.id == ReportDetail.report_id)
+    if post_id is not None:
+        stmt = stmt.where(Report.post_id == post_id)
+    stmt = stmt.order_by(Report.created_at.desc(), Report.id.desc()).offset(offset).limit(limit)
+    return [report_detail_view(report, detail) for report, detail in session.exec(stmt).all()]
+
+
+@router.get("/admin/community/reports/{report_id}/detail", response_model=ReportDetailOut,
+            summary="관리자: 신고 한 건의 설명 조회")
+def report_detail(report_id: int, _: User = Depends(require_admin), session: Session = Depends(get_session)):
+    report = session.get(Report, report_id)
+    if not report:
+        raise HTTPException(404, "신고를 찾지 못했어요.")
+    return report_detail_view(report, session.get(ReportDetail, report_id))
