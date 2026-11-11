@@ -258,9 +258,10 @@ def field_update(board_id: str, key: str, body: FieldPatch, admin: User = Depend
             new["label"] + (" · 사용 안 함" if on else " · 사용 중"), new["label"] + (" · 사용 중" if on else " · 사용 안 함"))
     elif only_order:
         log(session, admin, b.name, "항목 순서 바꾸기", f"{new['label']} {idx + 1}번째", f"{new['label']} {pos + 1}번째")
-    elif field_brief(old) != field_brief(new) or pos != idx or old.get("help") != new.get("help") \
+    elif old["key"] != new["key"] or field_brief(old) != field_brief(new) or pos != idx or old.get("help") != new.get("help") \
             or old.get("active", True) != new.get("active", True):
-        log(session, admin, b.name, "항목 고치기", f"{idx + 1}. {field_brief(old)}", f"{pos + 1}. {field_brief(new)}")
+        log(session, admin, b.name, "항목 고치기", f"{idx + 1}. {field_brief(old)} · 키 {old['key']}",
+            f"{pos + 1}. {field_brief(new)} · 키 {new['key']}")
     else:
         return FieldSaveOut(board=board_out(b), impact=None)
     set_fields(b, fl)

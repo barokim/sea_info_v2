@@ -116,9 +116,10 @@ def writable_boards(user: dict | None) -> list[dict]:
 
 
 # ---------- 게시글 ----------
-def list_posts(b: dict, q: str = "", sort: str = "latest") -> list[dict]:
+def list_posts(b: dict, q: str = "", sort: str = "latest", *, limit: int = 200, offset: int = 0) -> list[dict]:
     """게시판 설정(검색 항목 · 공지 고정 · 목록 권한)은 서버가 따라요."""
-    return api.get("/posts", params={"board": b["id"], "q": (q or "").strip(), "sort": sort})
+    return api.get("/posts", params={"board": b["id"], "q": (q or "").strip(), "sort": sort,
+                                     "limit": limit, "offset": offset})
 
 
 def get_post(pid: str) -> tuple[dict | None, dict | None]:
@@ -180,8 +181,8 @@ def comments_for(p: dict) -> list[dict]:
     return db.comments(p["id"])
 
 
-def add_comment(pid: str, body: str) -> dict:
-    return _changed(_call("POST", f"/posts/{pid}/comments", json={"body": body}))
+def add_comment(pid: str, body: str, *, parent_id: str | None = None) -> dict:
+    return _changed(_call("POST", f"/posts/{pid}/comments", json={"body": body, "parent_id": parent_id}))
 
 
 def delete_comment(comment_id: str) -> None:

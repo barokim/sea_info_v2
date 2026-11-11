@@ -9,7 +9,8 @@
 **가장 빠른 방법:** Windows는 `start.bat` 더블클릭, Mac · Linux는 `./start.sh`.
 설치 → Redis(Docker) → API 서버 → 화면까지 한 번에 켜고 브라우저가 열려요. 끄기는 `stop`, 오류 검사는 `check`.
 
-- 준비물: Python 3.10 이상, Docker Desktop
+- 준비물: Windows는 Python 3.13, Mac · Linux는 Python 3.10 이상, Docker Desktop
+- Windows 실행 스크립트는 Python 3.13을 선택해요. 기존 `.venv`의 버전이 다르면 `.venv-backup-*`으로 백업한 뒤 다시 만들어요. 가상환경과 백업은 Git에 올라가지 않아요.
 - 키는 `.env`에 넣어요 (`.env.example`을 복사). 비워 두면 로컬 대체 모드로 돌아가요.
 - 로컬 시험 계정: `explorer@example.com` / `sea12345` (회원), `admin@example.com` / `admin12345` (관리자)
 - 자세한 설치 · 키 발급 · 배포 · 문제 해결: **[docs/설치가이드.md](docs/설치가이드.md)**
