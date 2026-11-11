@@ -11,6 +11,10 @@ h1.sia-title{font-size:28px;font-weight:700;line-height:1.3;margin:0;padding:0;c
 p.sia-desc{color:#4A6274;font-size:15px;margin:.35rem 0 0}
 h2.sia-h2{font-size:20px;font-weight:700;margin:0;padding:0;color:#12344D}
 @media (max-width:640px){h1.sia-title{font-size:24px} h2.sia-h2{font-size:18px}}
+/* 바다 놀이터 "더 해 보기" 접이식 제목: 페이지 제목(h1.sia-title)과 같은 크기 */
+.st-key-extra_games [data-testid="stExpander"] summary p{font-size:28px;font-weight:700;line-height:1.3;color:#12344D}
+.st-key-extra_games [data-testid="stExpander"] summary svg{width:1.4rem;height:1.4rem}
+@media (max-width:640px){.st-key-extra_games [data-testid="stExpander"] summary p{font-size:24px}}
 .sia-muted{color:#4A6274;font-size:14px;line-height:1.6;margin:0 0 .15rem;padding-bottom:2px}
 
 /* 버튼 · 링크: 손가락으로 누르기 쉽게 44px */
