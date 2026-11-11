@@ -171,7 +171,10 @@ def tide_card(fail: bool = False) -> None:
             st.caption("선택 지역의 대표 예보지점 자료예요. 해당 해변과 위치가 다를 수 있어요.")
         _row("만조 (물 들어옴)", " · ".join(t["high"]) or "예보 시각 없음")
         _row("간조 (물 빠짐)", " · ".join(t["low"]) or "예보 시각 없음")
-        _row("파고 (파도 높이)", t["wave"])
+        # 공급자가 제공하지 않는 항목만 숨기고 조회 오류·미연결 안내는 유지해요.
+        wave = t.get("wave")
+        if wave is not None and str(wave).strip() not in ("", "미제공"):
+            _row("파고 (파도 높이)", str(wave))
 
         # [BARO-CHANGE-050] 예보와 별도 블록으로 dtRecent 실측값·관측 지점·자료 시각을 표시한다.
         st.markdown("**현재 관측값**")
